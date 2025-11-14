@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# ML artifacts
+*.h5
+scaler.pkl
+*.pkl
+# Large data
+data/
+historical_data.csv
+logs/
+
+# IDE
+.vscode/
+.idea/

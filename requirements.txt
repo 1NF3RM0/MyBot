@@ -1,0 +1,8 @@
+python-deriv-api
+pandas
+numpy
+ta
+streamlit
+TA-Lib
+scikit-learn
+tensorflow

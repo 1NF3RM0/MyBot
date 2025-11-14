@@ -2,7 +2,9 @@ import pandas as pd
 import sqlite3
 import asyncio
 from src.indicators import get_indicators
+from src.utils import retry_async # Import retry_async
 
+@retry_async()
 async def get_market_volatility(api, symbol: str, lookback_period=200):
     """Fetches historical data and calculates market volatility using ATR.
 

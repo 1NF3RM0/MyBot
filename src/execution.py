@@ -28,6 +28,7 @@ async def sell_contract(api, contract_id):
         print(f"❌ Exception while selling contract {contract_id}: {e}")
         return False
 
+@retry_async()
 async def execute_trade(api, symbol, confirmed_strategies, balance_response, trading_parameters, open_contracts, traded_symbols_this_cycle, trade_cache, data):
     """Executes a trade based on confirmed strategies."""
     try:

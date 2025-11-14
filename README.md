@@ -5,7 +5,9 @@ This project is an asynchronous Python trading bot designed for the Deriv platfo
 ## Features
 
 -   **Dynamic Symbol Fetching:** Automatically retrieves a list of available trading instruments from the Deriv API.
+-   **Enhanced Market Classification:** Utilizes a composite volatility measure across multiple symbols for more accurate parameter tuning.
 -   **Technical Analysis:** Calculates a range of indicators, including Moving Averages (SMA), Relative Strength Index (RSI), MACD, Bollinger Bands, Ichimoku Cloud, and Average True Range (ATR).
+-   **Optimized Indicator Computation:** RSI and Engulfing pattern values are stored when a trade is placed, preventing redundant re-computation during contract monitoring.
 -   **Multi-Strategy Confirmation:** Trades are only proposed if at least two strategies agree and their combined confidence score exceeds a threshold.
 -   **Dynamic Strategy Selection:** Strategies are dynamically selected based on classified market conditions (trending, ranging, volatile).
 -   **Strategy Evolution Engine:** Strategies are managed as objects with tunable parameters, confidence scores, and active status. Performance is tracked, and strategies can be re-enabled from a disabled state if they show recent success.
@@ -14,9 +16,11 @@ This project is an asynchronous Python trading bot designed for the Deriv platfo
 -   **Single Trade Per Symbol Per Cycle:** Ensures only one contract is proposed per symbol within a single main bot loop iteration.
 -   **Proposal Validation:** Rejects trades if `ask_price > 20` or `payout < 15`.
 -   **Early Exit Logic:** Monitors open contracts and initiates early exits (sells) if conditions like RSI overbought/oversold are met.
+-   **Efficient Contract Monitoring:** Removed the expensive `api.portfolio()` call, relying on individual contract status checks for better performance.
 -   **Comprehensive Logging:** All significant events (signals, proposals, buys, errors, skipped trades, contract outcomes) are logged to `trading_log.db` (SQLite) with timestamps, symbol, strategy, action, price, payout, and outcome.
 -   **Robust Error Handling:** Implements `retry_async` decorator with exponential backoff for API-dependent asynchronous functions.
--   **Graceful Shutdown:** Catches `KeyboardInterrupt` to cleanly disconnect from the API and save `open_contracts` to `open_contracts.json`.
+-   **Graceful Shutdown:** Catches `KeyboardInterrupt` to cleanly disconnect from the API and save `open_contracts` to `open_contracts.json` using a robust, crash-resistant mechanism.
+-   **Parallel Strategy Evaluation:** The entire evaluation process for each symbol (data fetching, indicator calculation, strategy evaluation) now runs concurrently, significantly reducing signal lag.
 
 ## Getting Started
 

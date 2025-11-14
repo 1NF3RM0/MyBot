@@ -90,40 +90,26 @@ async def evaluate_ml_prediction(symbol, data, confidence):
         return True, confidence * ml_confidence # Combine strategy confidence with ML confidence
     return False, 0.0
 
-@retry_async()
-async def evaluate_symbols_strategies_batch(symbols, api, active_strategies, all_strategies):
-    """Evaluates all strategies for a given list of symbols concurrently."""
-    results = []
-    tasks = []
-
-    for symbol in symbols:
-        tasks.append(api.ticks_history({
+async def _evaluate_single_symbol_strategies(symbol, api, active_strategies, all_strategies):
+    """Evaluates all strategies for a single symbol."""
+    try:
+        response = await api.ticks_history({
             'ticks_history': symbol,
             'end': 'latest',
             'count': 200,
             'style': 'candles',
             'granularity': 86400  # 1 day
-        }))
-    
-    responses = await asyncio.gather(*tasks, return_exceptions=True)
-
-    for i, response in enumerate(responses):
-        symbol = symbols[i]
-        if isinstance(response, Exception):
-            log_message = f"Error getting historical data for {symbol}: {response}"
-            logging_utils.log_trade(datetime.datetime.now(), symbol, None, 'error', None, None, log_message)
-            print(f"❌ {log_message}")
-            continue
+        })
 
         if response.get('error'):
             log_message = f"Error getting historical data for {symbol}: {response['error']['message']}"
             logging_utils.log_trade(datetime.datetime.now(), symbol, None, 'error', None, None, log_message)
             print(f"❌ {log_message}")
-            continue
+            return None
 
         if not response.get('candles'):
             print(f"⚠️ No historical data found for {symbol}.")
-            continue
+            return None
 
         data = pd.DataFrame(response['candles'])
         data['epoch'] = pd.to_datetime(data['epoch'], unit='s')
@@ -182,7 +168,7 @@ async def evaluate_symbols_strategies_batch(symbols, api, active_strategies, all
                 print(f"Fallback strategy '{fallback_strategy.name}' selected for {symbol} due to lack of qualified strategies.")
             else:
                 print(f"⚠️ No fallback strategy found for {symbol} with market condition: {market_condition}.")
-                continue # Continue to the next symbol
+                return None
 
         # Evaluate strategies
         signals = []
@@ -192,6 +178,20 @@ async def evaluate_symbols_strategies_batch(symbols, api, active_strategies, all
                 signals.append(strategy_obj) # Append the whole strategy object
         
         if signals:
-            results.append({'symbol': symbol, 'signals': signals, 'data': data})
-    
-    return results
+            return {'symbol': symbol, 'signals': signals, 'data': data}
+        return None
+    except Exception as e:
+        log_message = f"Unhandled exception during evaluation for {symbol}: {e}"
+        logging_utils.log_trade(datetime.datetime.now(), symbol, None, 'error', None, None, log_message)
+        print(f"❌ {log_message}")
+        return None
+
+@retry_async()
+async def evaluate_symbols_strategies_batch(symbols, api, active_strategies, all_strategies):
+    """Evaluates all strategies for a given list of symbols concurrently."""
+    tasks = [
+        _evaluate_single_symbol_strategies(symbol, api, active_strategies, all_strategies)
+        for symbol in symbols
+    ]
+    results = await asyncio.gather(*tasks)
+    return [result for result in results if result is not None]

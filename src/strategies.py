@@ -90,6 +90,30 @@ async def evaluate_ml_prediction(symbol, data, confidence):
         return True, confidence * ml_confidence # Combine strategy confidence with ML confidence
     return False, 0.0
 
+def _get_strategies_for_condition(market_condition, active_strategies, all_strategies, is_fallback=False):
+    """Helper function to select strategies based on market condition."""
+    strategies = []
+    if market_condition == "trending":
+        for s in active_strategies:
+            if s.name in ["Golden Cross", "MACD Crossover", "Awesome Oscillator"]:
+                strategies.append(s)
+    elif market_condition == "ranging":
+        for s in active_strategies:
+            if s.name in ["RSI Dip", "Bollinger Breakout"]:
+                strategies.append(s)
+    elif market_condition == "volatile":
+        for s in active_strategies:
+            if s.name == "Bollinger Breakout":
+                strategies.append(s)
+    
+    # Always add ML strategy if it's active, unless it's a fallback call and ML is not explicitly for this condition
+    if not is_fallback:
+        for s in active_strategies:
+            if s.name == "ML Prediction":
+                strategies.append(s)
+    
+    return strategies
+
 async def _evaluate_single_symbol_strategies(symbol, api, active_strategies, all_strategies):
     """Evaluates all strategies for a single symbol."""
     try:
@@ -121,24 +145,7 @@ async def _evaluate_single_symbol_strategies(symbol, api, active_strategies, all
         market_condition = classify_market_condition(data)
 
         # Select strategies based on market condition
-        selected_strategies = []
-        if market_condition == "trending":
-            for s in active_strategies:
-                if s.name in ["Golden Cross", "MACD Crossover", "Awesome Oscillator"]:
-                    selected_strategies.append(s)
-        elif market_condition == "ranging":
-            for s in active_strategies:
-                if s.name in ["RSI Dip", "Bollinger Breakout"]:
-                    selected_strategies.append(s)
-        elif market_condition == "volatile":
-            for s in active_strategies:
-                if s.name == "Bollinger Breakout":
-                    selected_strategies.append(s)
-        
-        # Always add ML strategy if it's active
-        for s in active_strategies:
-            if s.name == "ML Prediction":
-                selected_strategies.append(s)
+        selected_strategies = _get_strategies_for_condition(market_condition, active_strategies, all_strategies)
         
         if not selected_strategies:
             print(f"⚠️ No active strategies selected for market condition: {market_condition} on symbol {symbol}. Attempting to select a fallback strategy.")
@@ -146,22 +153,12 @@ async def _evaluate_single_symbol_strategies(symbol, api, active_strategies, all
             fallback_strategy = None
             max_confidence = -1
 
-            # Iterate through all strategies to find the highest confidence one matching the market condition
-            for strategy_obj in all_strategies.values():
-                if strategy_obj.is_active: # Only consider active strategies for fallback
-                    # Check if the strategy matches the current market condition
-                    if market_condition == "trending" and (strategy_obj.func == evaluate_golden_cross or strategy_obj.func == evaluate_macd_crossover):
-                        if strategy_obj.confidence > max_confidence:
-                            max_confidence = strategy_obj.confidence
-                            fallback_strategy = strategy_obj
-                    elif market_condition == "ranging" and (strategy_obj.func == evaluate_rsi_dip or strategy_obj.func == evaluate_bollinger_breakout):
-                        if strategy_obj.confidence > max_confidence:
-                            max_confidence = strategy_obj.confidence
-                            fallback_strategy = strategy_obj
-                    elif market_condition == "volatile" and strategy_obj.func == evaluate_bollinger_breakout:
-                        if strategy_obj.confidence > max_confidence:
-                            max_confidence = strategy_obj.confidence
-                            fallback_strategy = strategy_obj
+            # Find the highest confidence fallback strategy
+            fallback_options = _get_strategies_for_condition(market_condition, active_strategies, all_strategies, is_fallback=True)
+            for strategy_obj in fallback_options:
+                if strategy_obj.confidence > max_confidence:
+                    max_confidence = strategy_obj.confidence
+                    fallback_strategy = strategy_obj
             
             if fallback_strategy:
                 selected_strategies.append(fallback_strategy)

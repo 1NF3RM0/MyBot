@@ -57,7 +57,7 @@ class TradingBot:
             self.api = DerivAPI(app_id=config.APP_ID)
 
             # Authorize with your API token
-            authorize_response = await self.api.authorize(config.API_TOKEN)
+            authorize_response = await self._authorize_api(config.API_TOKEN)
             if authorize_response.get('error'):
                 log_message = f"Authorization error: {authorize_response['error']['message']}"
                 logging_utils.log_trade(datetime.datetime.now(), None, None, 'error', None, None, log_message)
@@ -68,7 +68,7 @@ class TradingBot:
                 traded_symbols_this_cycle = set()  # Clear cache at the start of each new cycle
                 try:
                     # Get account information
-                    balance_response = await self.api.balance()
+                    balance_response = await self._get_balance()
                     if balance_response.get('error'):
                         log_message = f"Error getting balance: {balance_response['error']['message']}"
                         logging_utils.log_trade(datetime.datetime.now(), None, None, 'error', None, None, log_message)
@@ -78,7 +78,7 @@ class TradingBot:
                     print(f"💰 Account Balance: ${balance_response['balance']['balance']:.2f} {balance_response['balance']['currency']}")
 
                     # Get available symbols
-                    asset_index_response = await self.api.asset_index()
+                    asset_index_response = await self._get_asset_index()
                     # Filter symbols
                     symbols_to_trade = []
                     forex_commodities = ['frxXAUUSD', 'frxXPDUSD', 'frxXPTUSD', 'frxXAGUSD']
@@ -158,6 +158,18 @@ class TradingBot:
                 print(f"❌ Error saving open contracts: {e}")
 
             print("✅ Bot shut down gracefully.")
+
+    @retry_async()
+    async def _authorize_api(self, api_token):
+        return await self.api.authorize(api_token)
+
+    @retry_async()
+    async def _get_balance(self):
+        return await self.api.balance()
+
+    @retry_async()
+    async def _get_asset_index(self):
+        return await self.api.asset_index()
 
     @retry_async()
     async def monitor_open_contracts(self):

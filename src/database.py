@@ -37,6 +37,7 @@ class UserSettings(Base):
     take_profit_percent = Column(Float, default=20.0)
     
     notifications_enabled = Column(Boolean, default=False)
+    active_strategies = Column(String, default="evaluate_golden_cross,evaluate_rsi_dip,evaluate_macd_crossover")
 
     user = relationship("User", back_populates="settings")
 

@@ -19,18 +19,13 @@ from src import param_tuner
 from src.strategies import evaluate_golden_cross, evaluate_rsi_dip, evaluate_macd_crossover, evaluate_bollinger_breakout, evaluate_awesome_oscillator, evaluate_ml_prediction, evaluate_symbols_strategies_batch
 from src.execution import sell_contract, execute_trade
 from src.monitor import monitor_open_contracts
+from src.strategy_definitions import BASE_STRATEGIES
+import copy
 
 class TradingBot:
     def __init__(self):
         self.api = None
-        self.strategies = {
-            'evaluate_golden_cross': strategy_manager.Strategy('Golden Cross', evaluate_golden_cross, {}, 1.0),
-            'evaluate_rsi_dip': strategy_manager.Strategy('RSI Dip', evaluate_rsi_dip, {}, 0.8),
-            'evaluate_macd_crossover': strategy_manager.Strategy('MACD Crossover', evaluate_macd_crossover, {}, 0.9),
-            'evaluate_bollinger_breakout': strategy_manager.Strategy('Bollinger Breakout', evaluate_bollinger_breakout, {}, 0.85),
-            'evaluate_awesome_oscillator': strategy_manager.Strategy('Awesome Oscillator', evaluate_awesome_oscillator, {}, 0.8),
-            'evaluate_ml_prediction': strategy_manager.Strategy('ML Prediction', evaluate_ml_prediction, {}, 0.7, is_active=True)
-        }
+        self.strategies = copy.deepcopy(BASE_STRATEGIES)
         self.open_contracts = []
         self.trade_cache = {}
         self.trading_parameters = {
@@ -83,6 +78,14 @@ class TradingBot:
             await self._log(f"❌ Error saving open contracts: {e}")
 
         await self._log("Bot stopped successfully.")
+
+    async def emergency_stop(self):
+        await self._log("🚨 Emergency Stop initiated! Attempting to sell all open positions...")
+        for contract in list(self.open_contracts):
+            await self._log(f"Attempting to sell contract {contract['contract_id']}...")
+            await sell_contract(self.api, contract['contract_id'], self._log)
+        
+        await self.stop()
 
 
     async def run(self):

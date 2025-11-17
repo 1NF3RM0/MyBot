@@ -7,53 +7,91 @@ const TradeLogTab = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStrategy, setFilterStrategy] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [uniqueStrategies, setUniqueStrategies] = useState([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
-  const fetchTradeLogs = useCallback(async () => {
-    // This endpoint needs to be created in the backend
-    // It should return a list of trade logs for the current user
-    // For now, using dummy data
-    const dummyTradeLogs = [
-      { id: 1, timestamp: '2025-11-18 10:30:00', symbol: 'EURUSD', strategy: 'Golden Cross', type: 'CALL', entry: 1.08500, exit: 1.08550, pnl: 5.00, status: 'Closed (Win)' },
-      { id: 2, timestamp: '2025-11-18 10:25:00', symbol: 'GBPUSD', strategy: 'RSI Dip', type: 'PUT', entry: 1.25000, exit: 1.25020, pnl: -2.00, status: 'Closed (Loss)' },
-      { id: 3, timestamp: '2025-11-18 10:20:00', symbol: 'AUDUSD', strategy: 'MACD Crossover', type: 'CALL', entry: 0.68000, exit: null, pnl: null, status: 'Open' },
-      { id: 4, timestamp: '2025-11-18 10:15:00', symbol: 'EURUSD', strategy: 'Golden Cross', type: 'PUT', entry: 1.08600, exit: 1.08580, pnl: 2.00, status: 'Closed (Win)' },
-    ];
-    setTrades(dummyTradeLogs);
-  }, []);
+  const fetchTradeLogs = useCallback(async (reset = false) => {
+    if (!hasMore && !reset) return;
+
+    const currentPage = reset ? 0 : page;
+    const params = new URLSearchParams({
+      skip: currentPage * 50,
+      limit: 50,
+    });
+    if (searchTerm) params.append('search', searchTerm);
+    if (filterStrategy !== 'all') params.append('strategy', filterStrategy);
+    if (filterStatus !== 'all') params.append('status', filterStatus);
+
+    try {
+      const response = await fetch(`http://localhost:8000/tradelog?${params.toString()}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTrades(prev => reset ? data : [...prev, ...data]);
+        setHasMore(data.length === 50);
+        if (reset) setPage(1); else setPage(p => p + 1);
+      }
+    } catch (error) {
+      console.error('Error fetching trade logs:', error);
+    }
+  }, [token, searchTerm, filterStrategy, filterStatus, page, hasMore]);
 
   useEffect(() => {
-    fetchTradeLogs();
-  }, [fetchTradeLogs]);
+    setTrades([]);
+    setPage(0);
+    setHasMore(true);
+    // This effect will trigger a fetch when filters change
+  }, [searchTerm, filterStrategy, filterStatus]);
 
-  const handleSearchChange = (e) => {
-    setSearchTerm(e.target.value);
-  };
+  useEffect(() => {
+    fetchTradeLogs(true);
+  }, [searchTerm, filterStrategy, filterStatus]); // Re-fetch when filters change
 
-  const handleStrategyFilterChange = (e) => {
-    setFilterStrategy(e.target.value);
-  };
-
-  const handleStatusFilterChange = (e) => {
-    setFilterStatus(e.target.value);
-  };
+  useEffect(() => {
+    // Fetch unique strategies for the filter dropdown
+    const fetchStrategies = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/strategies', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setUniqueStrategies([...new Set(data.map(s => s.id))]);
+        }
+      } catch (error) {
+        console.error('Error fetching strategies for filter:', error);
+      }
+    };
+    fetchStrategies();
+  }, [token]);
 
   const exportToCSV = () => {
-    // This would typically involve an API call to the backend to generate the CSV
-    // For now, we'll just log a message
-    alert('Exporting trade history to CSV is not yet implemented.');
-    console.log('Exporting filtered trades to CSV...');
+    const params = new URLSearchParams();
+    if (searchTerm) params.append('search', searchTerm);
+    if (filterStrategy !== 'all') params.append('strategy', filterStrategy);
+    if (filterStatus !== 'all') params.append('status', filterStatus);
+    
+    const url = `http://localhost:8000/tradelog/export?${params.toString()}`;
+    
+    // Create a temporary anchor element to trigger the download
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.setAttribute('download', 'trade_log.csv');
+    // We need to add the token to the request, which is not possible with a direct link.
+    // A backend that supports tokens in query params is one way, but for now, we'll use fetch.
+    fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(res => res.blob())
+      .then(blob => {
+        const blobUrl = window.URL.createObjectURL(blob);
+        anchor.href = blobUrl;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        window.URL.revokeObjectURL(blobUrl);
+      });
   };
-
-  const filteredTrades = trades.filter(trade => {
-    const matchesSearch = trade.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          trade.strategy.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStrategy = filterStrategy === 'all' || trade.strategy === filterStrategy;
-    const matchesStatus = filterStatus === 'all' || trade.status.toLowerCase().includes(filterStatus.toLowerCase());
-    return matchesSearch && matchesStrategy && matchesStatus;
-  });
-
-  // Extract unique strategies for filter dropdown
-  const uniqueStrategies = [...new Set(trades.map(trade => trade.strategy))];
 
   return (
     <div className="tradelog-tab">
@@ -65,22 +103,22 @@ const TradeLogTab = () => {
       <div className="filters-section">
         <input
           type="text"
-          placeholder="Search by symbol or strategy..."
+          placeholder="Search by symbol..."
           value={searchTerm}
-          onChange={handleSearchChange}
+          onChange={(e) => setSearchTerm(e.target.value)}
           className="search-input"
         />
-        <select value={filterStrategy} onChange={handleStrategyFilterChange} className="filter-select">
+        <select value={filterStrategy} onChange={(e) => setFilterStrategy(e.target.value)} className="filter-select">
           <option value="all">All Strategies</option>
           {uniqueStrategies.map(strategy => (
             <option key={strategy} value={strategy}>{strategy}</option>
           ))}
         </select>
-        <select value={filterStatus} onChange={handleStatusFilterChange} className="filter-select">
+        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="filter-select">
           <option value="all">All Statuses</option>
-          <option value="open">Open</option>
-          <option value="closed (win)">Closed (Win)</option>
-          <option value="closed (loss)">Closed (Loss)</option>
+          <option value="Open">Open</option>
+          <option value="Closed (Win)">Closed (Win)</option>
+          <option value="Closed (Loss)">Closed (Loss)</option>
         </select>
       </div>
 
@@ -99,15 +137,15 @@ const TradeLogTab = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredTrades.length > 0 ? (
-              filteredTrades.map(trade => (
+            {trades.length > 0 ? (
+              trades.map(trade => (
                 <tr key={trade.id}>
-                  <td>{trade.timestamp}</td>
+                  <td>{new Date(trade.timestamp).toLocaleString()}</td>
                   <td>{trade.symbol}</td>
                   <td>{trade.strategy}</td>
                   <td>{trade.type}</td>
-                  <td>{trade.entry ? trade.entry.toFixed(5) : 'N/A'}</td>
-                  <td>{trade.exit ? trade.exit.toFixed(5) : 'N/A'}</td>
+                  <td>{trade.entry_price ? trade.entry_price.toFixed(5) : 'N/A'}</td>
+                  <td>{trade.exit_price ? trade.exit_price.toFixed(5) : 'N/A'}</td>
                   <td className={trade.pnl >= 0 ? 'text-success' : 'text-danger'}>{trade.pnl ? `$${trade.pnl.toFixed(2)}` : 'N/A'}</td>
                   <td>{trade.status}</td>
                 </tr>
@@ -120,6 +158,11 @@ const TradeLogTab = () => {
           </tbody>
         </table>
       </div>
+      {hasMore && (
+        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+          <button onClick={() => fetchTradeLogs()} className="btn-secondary">Load More</button>
+        </div>
+      )}
     </div>
   );
 };

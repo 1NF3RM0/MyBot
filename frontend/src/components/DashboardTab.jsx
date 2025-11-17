@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const DashboardTab = ({ logs }) => {
   const { token } = useAuth();
@@ -12,6 +13,8 @@ const DashboardTab = ({ logs }) => {
     open_trades: 0,
     trend_signal: 'N/A',
   });
+  const [performanceData, setPerformanceData] = useState([]);
+  const [recentTrades, setRecentTrades] = useState([]);
 
   const fetchBotStatus = useCallback(async () => {
     try {
@@ -27,27 +30,62 @@ const DashboardTab = ({ logs }) => {
     }
   }, [token]);
 
-  // Placeholder for fetching metrics
   const fetchMetrics = useCallback(async () => {
-    // In a real application, this would fetch data from a new API endpoint
-    // For now, we'll use dummy data or derive from logs if possible
-    setMetrics(prev => ({
-      ...prev,
-      total_pnl: 1250.75,
-      pnl_percentage: 12.5,
-      win_rate: 65.2,
-      active_strategies: 3,
-      open_trades: 1,
-      trend_signal: 'Uptrend',
-    }));
-  }, []);
+    try {
+      const response = await fetch('http://localhost:8000/bot/metrics', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setMetrics(data);
+      }
+    } catch (error) {
+      console.error('Error fetching metrics:', error);
+    }
+  }, [token]);
+
+  const fetchRecentTrades = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:8000/tradelog/recent', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setRecentTrades(data);
+      }
+    } catch (error) {
+      console.error('Error fetching recent trades:', error);
+    }
+  }, [token]);
+
+  const fetchPerformanceData = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:8000/bot/performance', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPerformanceData(data);
+      }
+    } catch (error) {
+      console.error('Error fetching performance data:', error);
+    }
+  }, [token]);
 
   useEffect(() => {
-    fetchBotStatus();
-    fetchMetrics();
-    const interval = setInterval(fetchMetrics, 5000); // Refresh metrics every 5 seconds
-    return () => clearInterval(interval);
-  }, [fetchBotStatus, fetchMetrics]);
+    if (token) {
+      fetchBotStatus();
+      fetchMetrics();
+      fetchRecentTrades();
+      fetchPerformanceData();
+      const interval = setInterval(() => {
+        fetchMetrics();
+        fetchRecentTrades();
+        fetchPerformanceData();
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [token, fetchBotStatus, fetchMetrics, fetchRecentTrades, fetchPerformanceData]);
 
   const startBot = async () => {
     try {
@@ -83,11 +121,22 @@ const DashboardTab = ({ logs }) => {
     }
   };
 
-  const emergencyStop = () => {
+  const emergencyStop = async () => {
     if (window.confirm('Are you sure you want to emergency stop the bot? This will attempt to close all open positions.')) {
-      // Implement emergency stop logic here
-      console.log('Emergency Stop initiated!');
-      stopBot(); // For now, emergency stop just calls regular stop
+      try {
+        const response = await fetch('http://localhost:8000/bot/emergency_stop', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (response.ok) {
+          setBotStatus('stopped');
+        } else {
+          const errorData = await response.json();
+          console.error('Error during emergency stop:', errorData.message);
+        }
+      } catch (error) {
+        console.error('Network error during emergency stop:', error);
+      }
     }
   };
 
@@ -126,10 +175,24 @@ const DashboardTab = ({ logs }) => {
 
       <div className="performance-graph">
         <h3>Performance Graph (P/L Over Time)</h3>
-        <div className="graph-placeholder">
-          {/* Chart.js or Recharts will go here */}
-          <p>Graph visualization coming soon...</p>
-        </div>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart
+            data={performanceData}
+            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+            <XAxis dataKey="timestamp" stroke="var(--text-muted)" />
+            <YAxis stroke="var(--text-muted)" />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: 'var(--secondary-bg)',
+                borderColor: 'var(--border-color)',
+              }}
+            />
+            <Legend />
+            <Line type="monotone" dataKey="pnl" name="Cumulative P/L" stroke="var(--accent-color)" strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
       <div className="recent-trades">
@@ -149,27 +212,24 @@ const DashboardTab = ({ logs }) => {
               </tr>
             </thead>
             <tbody>
-              {/* Placeholder for recent trades */}
-              <tr>
-                <td>2025-11-18 10:30:00</td>
-                <td>EURUSD</td>
-                <td>Golden Cross</td>
-                <td>CALL</td>
-                <td>1.08500</td>
-                <td>1.08550</td>
-                <td className="text-success">+$5.00</td>
-                <td>Closed (Win)</td>
-              </tr>
-              <tr>
-                <td>2025-11-18 10:25:00</td>
-                <td>GBPUSD</td>
-                <td>RSI Dip</td>
-                <td>PUT</td>
-                <td>1.25000</td>
-                <td>1.25020</td>
-                <td className="text-danger">-$2.00</td>
-                <td>Closed (Loss)</td>
-              </tr>
+              {recentTrades.length > 0 ? (
+                recentTrades.map(trade => (
+                  <tr key={trade.id}>
+                    <td>{new Date(trade.timestamp).toLocaleString()}</td>
+                    <td>{trade.symbol}</td>
+                    <td>{trade.strategy}</td>
+                    <td>{trade.type}</td>
+                    <td>{trade.entry_price ? trade.entry_price.toFixed(5) : 'N/A'}</td>
+                    <td>{trade.exit_price ? trade.exit_price.toFixed(5) : 'N/A'}</td>
+                    <td className={trade.pnl >= 0 ? 'text-success' : 'text-danger'}>{trade.pnl ? `$${trade.pnl.toFixed(2)}` : 'N/A'}</td>
+                    <td>{trade.status}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="8" style={{ textAlign: 'center' }}>No recent trades found.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

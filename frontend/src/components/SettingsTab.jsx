@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 const SettingsTab = () => {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
   const [apiConfig, setApiConfig] = useState({ deriv_app_id: '', deriv_api_token: '' });
   const [riskConfig, setRiskConfig] = useState({ risk_percentage: 2.0, stop_loss_percent: 10.0, take_profit_percent: 20.0 });
   const [notificationConfig, setNotificationConfig] = useState({ email: '', notifications_enabled: false });
@@ -91,11 +91,25 @@ const SettingsTab = () => {
     }
   };
 
-  const resetAllData = () => {
-    if (window.confirm('WARNING: This will permanently delete ALL your trade data, settings, and strategies. Are you absolutely sure?')) {
-      // This endpoint needs to be created in the backend
-      alert('Reset All Data functionality is not yet implemented.');
-      console.log('Resetting all data...');
+  const resetAllData = async () => {
+    if (window.confirm('WARNING: This will permanently delete ALL your trade data and settings. Are you absolutely sure?')) {
+      try {
+        const response = await fetch('http://localhost:8000/user/reset', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (response.ok) {
+          alert('Your data has been reset. You will now be logged out.');
+          logout();
+        } else {
+          const errorData = await response.json();
+          setMessage(`Failed to reset data: ${errorData.detail || response.statusText}`);
+          setMessageType('error');
+        }
+      } catch (error) {
+        setMessage(`Network error: ${error.message}`);
+        setMessageType('error');
+      }
     }
   };
 

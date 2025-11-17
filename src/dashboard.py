@@ -152,10 +152,10 @@ class Dashboard(QMainWindow):
         for symbol_name in self.df_trades['symbol'].unique():
             symbol_trades = self.df_trades[(self.df_trades['symbol'] == symbol_name) & (self.df_trades['action'].isin(['win', 'loss']))]
             
-            total_profit = symbol_trades[symbol_trades['action'] == 'win']['payout'].sum() -
-                           symbol_trades[symbol_trades['action'] == 'win']['price'].sum()
-            total_loss = symbol_trades[symbol_trades['action'] == 'loss']['price'].sum() -
-                         symbol_trades[symbol_trades['action'] == 'loss']['payout'].sum()
+            total_profit = (symbol_trades[symbol_trades['action'] == 'win']['payout'].sum() -
+                            symbol_trades[symbol_trades['action'] == 'win']['price'].sum())
+            total_loss = (symbol_trades[symbol_trades['action'] == 'loss']['price'].sum() -
+                          symbol_trades[symbol_trades['action'] == 'loss']['payout'].sum())
             
             net_profit = total_profit - total_loss
             

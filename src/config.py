@@ -6,5 +6,5 @@ STOP_LOSS_PERCENT = 5  # Sell if loss exceeds 5% of buy price
 TAKE_PROFIT_PERCENT = 10 # Sell if profit exceeds 10% of buy price
 
 # Proposal validation parameters
-MAX_ASK_PRICE = 20
-MIN_PAYOUT = 15
+MAX_ASK_PRICE = 200
+MIN_PAYOUT = 150

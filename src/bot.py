@@ -29,7 +29,7 @@ class TradingBot:
             'evaluate_macd_crossover': strategy_manager.Strategy('MACD Crossover', evaluate_macd_crossover, {}, 0.9),
             'evaluate_bollinger_breakout': strategy_manager.Strategy('Bollinger Breakout', evaluate_bollinger_breakout, {}, 0.85),
             'evaluate_awesome_oscillator': strategy_manager.Strategy('Awesome Oscillator', evaluate_awesome_oscillator, {}, 0.8),
-            'evaluate_ml_prediction': strategy_manager.Strategy('ML Prediction', evaluate_ml_prediction, {}, 0.7)
+            'evaluate_ml_prediction': strategy_manager.Strategy('ML Prediction', evaluate_ml_prediction, {}, 0.7, is_active=True)
         }
         self.open_contracts = []
         self.trade_cache = {}

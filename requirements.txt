@@ -6,3 +6,4 @@ streamlit
 TA-Lib
 scikit-learn
 tensorflow
+bottleneck>=1.3.6

@@ -120,12 +120,16 @@ class TradingBot:
                             confirmed_strategies = signals
                             total_confidence = sum(s.confidence for s in signals)
 
-                            try:
-                                await execute_trade(self.api, symbol, confirmed_strategies, balance_response, self.trading_parameters, self.open_contracts, traded_symbols_this_cycle, self.trade_cache, data)
-                            except Exception as e:
-                                log_message = f"Error during trade execution for {symbol}: {e}"
-                                logging_utils.log_trade(datetime.datetime.now(), symbol, str([s.id for s in confirmed_strategies]), 'error', None, None, log_message)
-                                print(f"❌ {log_message}")
+                            # Implement multi-strategy confirmation
+                            if len(confirmed_strategies) >= 2 and total_confidence >= config.MIN_COMBINED_CONFIDENCE:
+                                try:
+                                    await execute_trade(self.api, symbol, confirmed_strategies, balance_response, self.trading_parameters, self.open_contracts, traded_symbols_this_cycle, self.trade_cache, data)
+                                except Exception as e:
+                                    log_message = f"Error during trade execution for {symbol}: {e}"
+                                    logging_utils.log_trade(datetime.datetime.now(), symbol, str([s.id for s in confirmed_strategies]), 'error', None, None, log_message)
+                                    print(f"❌ {log_message}")
+                            else:
+                                print(f"⚠️ Not enough confirmed strategies ({len(confirmed_strategies)}) or combined confidence ({total_confidence:.2f}) below threshold ({config.MIN_COMBINED_CONFIDENCE}) for {symbol}. Skipping trade.")
                     # Monitor open contracts
                     await self.monitor_open_contracts()
 

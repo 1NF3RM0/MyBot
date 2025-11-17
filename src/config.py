@@ -8,3 +8,4 @@ TAKE_PROFIT_PERCENT = 10 # Sell if profit exceeds 10% of buy price
 # Proposal validation parameters
 MAX_ASK_PRICE = 200
 MIN_PAYOUT = 150
+MIN_COMBINED_CONFIDENCE = 1.5 # Example threshold, can be tuned

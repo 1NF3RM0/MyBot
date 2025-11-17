@@ -1,5 +1,5 @@
-APP_ID = "110743"  # Replace with your Deriv App ID
-API_TOKEN = "D8oDxj9TEYZLcKG"  # Replace with your Deriv API Token
+APP_ID = '110743'  # Replace with your Deriv App ID
+API_TOKEN = 'D8oDxj9TEYZLcKG'  # Replace with your Deriv API Token
 
 # Stop-loss and take-profit parameters
 STOP_LOSS_PERCENT = 5  # Sell if loss exceeds 5% of buy price

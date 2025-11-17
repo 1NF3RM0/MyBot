@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyBot — Deriv Trading Bot</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="#">MyBot</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="#features">Features</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#roadmap">Roadmap</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#getting-started">Getting Started</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#contact">Contact</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <header class="hero-section text-white text-center">
+        <div class="container">
+            <h1 class="display-4">MyBot — Deriv Trading Bot</h1>
+            <p class="lead">A fully asynchronous Python trading bot for the Deriv platform. It automates trading with a multi-strategy engine, real-time market classification, and adaptive parameter tuning.</p>
+        </div>
+    </header>
+
+    <section id="features" class="py-5">
+        <div class="container">
+            <h2 class="text-center mb-4">Core Features</h2>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Dynamic Symbol Fetching</h5>
+                            <p class="card-text">Automatically fetches tradable symbols from the Deriv API.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Advanced Technical Analysis</h5>
+                            <p class="card-text">Uses RSI, MACD, Bollinger Bands, Ichimoku Cloud, ATR, and SMAs.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Multi-Strategy Confirmation</h5>
+                            <p class="card-text">Executes trades only when two or more strategies agree, ensuring higher confidence signals.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Parameter Auto-Tuning</h5>
+                            <p class="card-text">Dynamically adjusts risk, thresholds, and cooldowns based on market volatility.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Strategy Lifecycle Management</h5>
+                            <p class="card-text">Enables/disables strategies based on their recent performance.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Contract Monitoring & Early Exit</h5>
+                            <p class="card-text">Monitors open positions and exits early if conditions turn unfavorable (e.g., RSI overbought/oversold).</p>
+                        </div>
+                    </div>
+                </div>
+                 <div class="col-md-4">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Robust Logging</h5>
+                            <p class="card-text">Logs all actions to a local SQLite database for analysis and debugging.</p>
+                        </div>
+                    </div>
+                </div>
+                 <div class="col-md-4">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Graceful Shutdown</h5>
+                            <p class="card-text">Saves open trades and state on exit to ensure safe recovery.</p>
+                        </div>
+                    </div>
+                </div>
+                 <div class="col-md-4">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Asynchronous Error Handling</h5>
+                            <p class="card-text">Includes exponential backoff retries for robust API communication.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="roadmap" class="py-5 bg-light">
+        <div class="container">
+            <h2 class="text-center mb-4">From Bot to Platform: The Roadmap</h2>
+            <p class="text-center text-muted mb-5">To evolve MyBot from a script into a polished, deployable web application, here is the development roadmap.</p>
+            <div class="accordion" id="roadmapAccordion">
+                <!-- Frontend -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingOne">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+                            Frontend Dashboard
+                        </button>
+                    </h2>
+                    <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#roadmapAccordion">
+                        <div class="accordion-body">
+                            Build a web dashboard (React / Vue) to display performance, open trades, logs, and strategy analytics. Show real-time updates and include charts for profit, drawdowns, and other metrics.
+                        </div>
+                    </div>
+                </div>
+                <!-- Backend -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingTwo">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
+                            Backend API
+                        </button>
+                    </h2>
+                    <div id="collapseTwo" class="accordion-collapse collapse" aria-labelledby="headingTwo" data-bs-parent="#roadmapAccordion">
+                        <div class="accordion-body">
+                            Wrap the bot core into a web backend (FastAPI / Django) with REST endpoints for controlling the bot, fetching status, and adjusting parameters. Use WebSockets to push real-time updates.
+                        </div>
+                    </div>
+                </div>
+                <!-- Database -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingThree">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree">
+                            Database & Persistence
+                        </button>
+                    </h2>
+                    <div id="collapseThree" class="accordion-collapse collapse" aria-labelledby="headingThree" data-bs-parent="#roadmapAccordion">
+                        <div class="accordion-body">
+                            Use a robust database like PostgreSQL to persist trade logs, strategy performance, and user data. Integrate a backtesting engine to simulate strategies on historical data.
+                        </div>
+                    </div>
+                </div>
+                <!-- Deployment -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingFour">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFour" aria-expanded="false" aria-controls="collapseFour">
+                            Deployment & Monitoring
+                        </button>
+                    </h2>
+                    <div id="collapseFour" class="accordion-collapse collapse" aria-labelledby="headingFour" data-bs-parent="#roadmapAccordion">
+                        <div class="accordion-body">
+                            Package the application with Docker for easy deployment on cloud providers (AWS, DigitalOcean). Implement CI/CD for automated testing and deployment, and use monitoring tools like Prometheus and Grafana.
+                        </div>
+                    </div>
+                </div>
+                 <!-- Security -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingFive">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFive" aria-expanded="false" aria-controls="collapseFive">
+                            Security & Safety
+                        </button>
+                    </h2>
+                    <div id="collapseFive" class="accordion-collapse collapse" aria-labelledby="headingFive" data-bs-parent="#roadmapAccordion">
+                        <div classs="accordion-body">
+                            Store API credentials securely using environment variables or a secrets manager. Validate all user inputs, add rate limiting to API endpoints, and ensure the bot can recover gracefully from failures.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <section id="future-features" class="py-5">
+        <div class="container">
+            <h2 class="text-center mb-4">Future Enhancements</h2>
+            <div class="row">
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <h5>Strategy Marketplace</h5>
+                    <p>A plugin system to allow users to write and share their own trading strategies.</p>
+                </div>
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <h5>Machine Learning Integration</h5>
+                    <p>Integrate ML models to predict market direction or volatility for smarter trades.</p>
+                </div>
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <h5>Paper Trading Mode</h5>
+                    <p>A simulation mode to test strategies without risking real money.</p>
+                </div>
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <h5>Advanced Risk Management</h5>
+                    <p>A dashboard to monitor exposure, drawdowns, and overall portfolio risk.</p>
+                </div>
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <h5>Mobile-Friendly UI</h5>
+                    <p>A responsive dashboard and mobile app for alerts and monitoring on the go.</p>
+                </div>
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <h5>Trade Journal</h5>
+                    <p>Allow users to record trades with notes and screenshots for later review.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="getting-started" class="py-5 bg-dark text-white">
+        <div class="container">
+            <h2 class="text-center mb-4">Getting Started</h2>
+            <div class="row">
+                <div class="col-md-10 mx-auto">
+                    <pre class="bg-secondary p-4 rounded"><code>
+# 1. Clone the repository
+git clone https://github.com/your-username/MyBot.git
+cd MyBot
+
+# 2. Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Configure your API keys
+# Edit src/config.py and add your Deriv App ID and API Token
+
+# 5. Run the bot
+python3 -m src.core
+
+# 6. Run tests (optional)
+python -m unittest discover tests
+                    </code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer id="contact" class="py-4 bg-dark text-white">
+        <div class="container text-center">
+            <p>MyBot Trading Bot &copy; 2025</p>
+            <p>Contributions are welcome! Please open issues or pull requests on our <a href="#" class="text-white">GitHub repository</a>.</p>
+            <p>Contact: [Your Email or Social Media Link]</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

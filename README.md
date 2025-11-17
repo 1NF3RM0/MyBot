@@ -1,89 +1,91 @@
-# Deriv Trading Bot
+# MyBot — Deriv Trading Bot with Web UI
 
-This project is an asynchronous Python trading bot designed for the Deriv platform. It automates trading across various asset classes, including forex, indices, and commodities, by leveraging technical analysis indicators and a multi-strategy approach.
+**MyBot** is an advanced, asynchronous Python trading bot built for the **Deriv** platform. It automates trading across forex, indices, and commodities using a multi-strategy technical analysis engine, real-time market classification, and a powerful web interface for control and monitoring.
 
-## Features
+![image](https://github.com/user-attachments/assets/15704251-652d-4a3c-8a9a-1960d183139a)
 
--   **Dynamic Symbol Fetching:** Automatically retrieves a list of available trading instruments from the Deriv API.
--   **Enhanced Market Classification:** Utilizes a composite volatility measure across multiple symbols for more accurate parameter tuning.
--   **Technical Analysis:** Calculates a range of indicators, including Moving Averages (SMA), Relative Strength Index (RSI), MACD, Bollinger Bands, Ichimoku Cloud, and Average True Range (ATR).
--   **Optimized Indicator Computation:** RSI and Engulfing pattern values are stored when a trade is placed, preventing redundant re-computation during contract monitoring.
--   **Multi-Strategy Confirmation:** Trades are only proposed if at least two strategies agree and their combined confidence score exceeds a threshold.
--   **Dynamic Strategy Selection:** Strategies are dynamically selected based on classified market conditions (trending, ranging, volatile).
--   **Strategy Evolution Engine:** Strategies are managed as objects with tunable parameters, confidence scores, and active status. Performance is tracked, and strategies can be re-enabled from a disabled state if they show recent success.
--   **Parameter Auto-tuning:** Trading parameters like cooldown period, SMA/RSI thresholds, and risk percentage are dynamically adjusted based on market volatility.
--   **Trade Cooldown and Similarity Checks:** Prevents re-trading the same setup within a cooldown period or if market conditions are too similar.
--   **Single Trade Per Symbol Per Cycle:** Ensures only one contract is proposed per symbol within a single main bot loop iteration.
--   **Proposal Validation:** Rejects trades if `ask_price > 20` or `payout < 15`.
--   **Early Exit Logic:** Monitors open contracts and initiates early exits (sells) if conditions like RSI overbought/oversold are met.
--   **Efficient Contract Monitoring:** Removed the expensive `api.portfolio()` call, relying on individual contract status checks for better performance.
--   **Comprehensive Logging:** All significant events (signals, proposals, buys, errors, skipped trades, contract outcomes) are logged to `trading_log.db` (SQLite) with timestamps, symbol, strategy, action, price, payout, and outcome.
--   **Robust Error Handling:** Implements `retry_async` decorator with exponential backoff for API-dependent asynchronous functions.
--   **Graceful Shutdown:** Catches `KeyboardInterrupt` to cleanly disconnect from the API and save `open_contracts` to `open_contracts.json` using a robust, crash-resistant mechanism.
--   **Parallel Strategy Evaluation:** The entire evaluation process for each symbol (data fetching, indicator calculation, strategy evaluation) now runs concurrently, significantly reducing signal lag.
+## ✨ Core Features
 
-## Getting Started
+### Trading Engine
+-   **Multi-Strategy Confirmation:** Executes trades only when multiple strategies agree, increasing signal confidence.
+-   **Dynamic Strategy Management:** Automatically adjusts strategy confidence and enables/disables strategies based on performance.
+-   **Adaptive Parameters:** Dynamically tunes risk, cooldowns, and indicator thresholds based on market volatility.
+-   **Advanced Technical Indicators:** Utilizes RSI, MACD, Bollinger Bands, Ichimoku Cloud, ATR, SMAs, and more.
+-   **Parallel Evaluation:** Evaluates all symbols and strategies concurrently for maximum speed and reduced signal lag.
+-   **Robust Error Handling:** Features an exponential backoff retry mechanism for all API communications.
+-   **Persistent State:** Gracefully saves all open trades on shutdown and reloads them on startup.
 
-### 1. Installation
+### Web Interface
+-   **Remote Control:** Start and stop the bot from a user-friendly web dashboard.
+-   **Real-Time Monitoring:** View a live stream of all bot activities, including signals, trades, and errors.
+-   **Live Status:** See the bot's current status (running/stopped), account balance, and open positions.
+-   **Centralized Configuration:** View and update your Deriv API credentials directly from the settings page.
+-   **Strategy Insights:** Monitor the confidence scores and status of all trading strategies in real-time.
 
-To set up the project, first install the required dependencies. It is recommended to use a virtual environment.
+## 🚀 Getting Started
 
-```bash
-pip install -r requirements.txt --break-system-packages
-```
+The application runs in two parts: a Python backend and a React frontend.
 
-### 2. Configuration
+### 1. Prerequisites
+- Python 3.11+
+- Node.js 18+ and npm
 
-Before running the bot, you must configure your Deriv API credentials in the `src/config.py` file. You will need to provide your App ID and API Token.
+### 2. Backend Setup
 
-```python
-# src/config.py
-
-APP_ID = "YOUR_APP_ID"  # Replace with your Deriv App ID
-API_TOKEN = "YOUR_API_TOKEN"  # Replace with your Deriv API Token
-
-# ... other trading parameters
-```
-
-### 3. Running the Bot
-
-To run the trading bot, execute the following command from the project's root directory:
+First, set up and run the bot's core engine.
 
 ```bash
-python3 -m src.core
+# 1. Clone the repository
+git clone https://github.com/your-username/MyBot.git
+cd MyBot
+
+# 2. Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Install Python dependencies
+pip install -r requirements.txt
+
+# 4. Configure API Keys (Optional)
+# You can pre-fill your API keys in `src/config.py` or set them later in the web UI.
+# APP_ID = "YOUR_APP_ID"
+# API_TOKEN = "YOUR_API_TOKEN"
+
+# 5. Run the backend server
+python3 -m src.main
 ```
+The backend is now running on `http://localhost:8000`.
 
-### 4. Running Tests
+### 3. Frontend Setup
 
-To run the test suite, use the following command:
+In a **new terminal**, set up and run the web interface.
 
 ```bash
-python -m unittest discover tests
+# 1. Navigate to the frontend directory
+cd MyBot/frontend
+
+# 2. Install Node.js dependencies
+npm install
+
+# 3. Run the frontend application
+npm run dev
 ```
+The frontend is now running, typically on `http://localhost:5173`.
 
-### 5. Generating Strategy Performance Report
+### 4. Launch the Dashboard
+Open your web browser and navigate to the frontend URL (e.g., `http://localhost:5173`). You can now start the bot and monitor its activity from the dashboard.
 
-To generate a report on strategy performance, execute the following command:
+## 🛠️ Development & Architecture
 
-```bash
-python3 -m src.report_generator
-```
+-   **Backend:** [FastAPI](https://fastapi.tiangolo.com/) provides the web server and API endpoints.
+-   **Frontend:** [React](https://react.dev/) (using [Vite](https://vitejs.dev/)) powers the interactive user interface.
+-   **Real-Time Communication:** [WebSockets](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API) are used to stream live logs and status updates from the backend to the frontend.
+-   **Database:** [SQLite](https://www.sqlite.org/index.html) is used for logging all trade events and strategy performance data.
 
-### 6. Running the Dashboard
+## 🤝 Contributing
 
-To run the Streamlit performance dashboard, execute the following command from the project's root directory:
+Contributions are welcome! Please feel free to open an issue or submit a pull request. For major changes, please open an issue first to discuss what you would like to change.
 
-```bash
-streamlit run src/dashboard.py
-```
+## 📄 License
 
-## Development Conventions
-
--   **Modularity:** The code is organized into modules with distinct responsibilities (`bot.py` for main logic, `config.py` for configuration, `utils.py` for utilities, `logging_utils.py` for logging, `strategy_manager.py` for strategy management, `param_tuner.py` for parameter tuning, `report_generator.py` for reporting).
--   **Asynchronous Programming:** The bot leverages `asyncio` for efficient handling of API requests and responses.
--   **Configuration Management:** API credentials and trading parameters are externalized in `config.py` for easy management and security.
--   **Dynamic Symbol Discovery:** Trading symbols are fetched dynamically from the Deriv API, making the bot adaptable to changes in available instruments.
--   **Technical Analysis Integration:** The `ta` library is used for comprehensive and standardized calculation of technical indicators.
--   **Error Handling:** The bot includes `try-except` blocks and a `retry_async` decorator to gracefully handle API errors and other exceptions, providing informative messages.
--   **Strategy Management:** Strategies are treated as objects, allowing for dynamic adjustment of confidence scores, activation/deactivation, and future mutation.
--   **Parameter Tuning:** Key trading parameters are dynamically adjusted based on real-time market conditions.
+This project is licensed under the MIT License. See the `LICENSE` file for details.

@@ -1,0 +1,39 @@
+body {
+    padding-top: 56px;
+    background-color: #f8f9fa;
+}
+
+.hero-section {
+    background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('https://www.deriv.com/static/og-deriv-2-1b7333322a6c4962c353443b343731d3.png') no-repeat center center;
+    background-size: cover;
+    padding: 100px 0;
+}
+
+.hero-section h1 {
+    font-size: 3.5rem;
+    font-weight: 700;
+}
+
+#features .card {
+    border: none;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+
+#features .card:hover {
+    transform: translateY(-5px);
+}
+
+#roadmap .accordion-button {
+    font-weight: 600;
+}
+
+#getting-started pre {
+    background-color: #343a40 !important;
+    border: 1px solid #495057;
+    color: #f8f9fa;
+}
+
+footer {
+    background-color: #212529 !important;
+}

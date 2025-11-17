@@ -173,7 +173,10 @@ def predict_signal(current_data):
         return "hold", 0.0
 
     # Features should be consistent with training
-    features = [col for col in data_for_prediction.columns if col not in ['epoch', 'target', 'symbol']]
+    if scaler is not None and hasattr(scaler, 'feature_names_in_'):
+        features = list(scaler.feature_names_in_)
+    else:
+        features = [col for col in data_for_prediction.columns if col not in ['epoch', 'symbol']]
     
     # Ensure the features used for prediction are the same as those used for training
     # This is a basic check, more robust handling might be needed

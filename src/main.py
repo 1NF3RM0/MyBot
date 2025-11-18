@@ -1,3 +1,4 @@
+# Force reload: 2025-11-18 01:45:00
 import asyncio
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
@@ -11,6 +12,7 @@ import re
 import io
 import csv
 from datetime import timedelta # Added this import
+from jose import JWTError, jwt
 
 from src.bot import TradingBot
 from . import auth, schemas, database
@@ -149,6 +151,7 @@ async def set_config(config_data: dict, current_user: schemas.User = Depends(aut
 
 @app.websocket("/ws/{token}")
 async def websocket_endpoint(websocket: WebSocket, token: str, db: Session = Depends(database.get_db)):
+    user_id = None # Initialize user_id
     try:
         payload = jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
         username: str = payload.get("sub")
@@ -160,14 +163,32 @@ async def websocket_endpoint(websocket: WebSocket, token: str, db: Session = Dep
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
         
-        await manager.connect(websocket, user.id)
+        user_id = user.id # Assign user_id here
+        await manager.connect(websocket, user_id)
         try:
             while True:
-                await websocket.receive_text()
-        except WebSocketDisconnect:
-            manager.disconnect(user.id)
+                try:
+                    await websocket.receive_text()
+                except WebSocketDisconnect:
+                    # Expected disconnection
+                    break
+                except (AttributeError, TypeError) as e:
+                    # Catch the specific error and break the loop
+                    print(f"Caught AttributeError/TypeError during websocket receive: {e}")
+                    break
+                except Exception as e:
+                    # Catch any other unexpected errors
+                    print(f"Unexpected error during websocket receive: {e}")
+                    break
+        finally:
+            if user_id is not None:
+                manager.disconnect(user_id)
     except JWTError:
         await websocket.close(code=status.WS_1008_POLICY_VIolation)
+    except Exception as e:
+        print(f"Unhandled exception in websocket_endpoint (outer block): {e}")
+        if user_id is not None:
+            manager.disconnect(user_id)
 
 # --- Data & Metrics Endpoints ---
 
@@ -200,6 +221,14 @@ async def get_metrics(current_user: schemas.User = Depends(auth.get_current_acti
         "pnl_percentage": pnl_percentage,
         "trend_signal": trend_signal,
     }
+
+@app.get("/bot/account")
+async def get_account_info(current_user: schemas.User = Depends(auth.get_current_active_user)):
+    user_id = current_user.id
+    if user_id in bot_instances and bot_instances[user_id]._is_running:
+        bot = bot_instances[user_id]
+        return {"balance": bot.balance, "currency": bot.currency}
+    return {"balance": None, "currency": None}
 
 @app.get("/bot/performance")
 async def get_performance_data(current_user: schemas.User = Depends(auth.get_current_active_user), db: Session = Depends(database.get_db)):

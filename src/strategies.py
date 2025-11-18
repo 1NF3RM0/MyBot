@@ -6,33 +6,26 @@ from src.utils import retry_async, classify_market_condition
 from src.indicators import get_indicators # get_indicators is needed for evaluate_symbol_strategies
 from src.ml_strategy import predict_signal # Import ML prediction function
 
-@retry_async()
-async def evaluate_golden_cross(symbol, data, confidence):
+@retry_async
+async def evaluate_golden_cross(candles):
     """Evaluates the Golden Cross strategy."""
-    if confidence == 0:
-        return False, 0.0 # Strategy disabled
+    if len(candles) < 25: return None
+    df = pd.DataFrame(candles)
+    sma_short = ta.trend.SMAIndicator(df['close'], window=10).sma_series()
+    sma_long = ta.trend.SMAIndicator(df['close'], window=25).sma_series()
+    if sma_short.iloc[-2] < sma_long.iloc[-2] and sma_short.iloc[-1] > sma_long.iloc[-1]:
+        return {'signal': 'buy', 'confidence': 0.7}
+    return None
 
-    latest_data = data.iloc[-1]
-    previous_data = data.iloc[-2]
-    golden_cross = latest_data['SMA_10'] > latest_data['SMA_20'] and previous_data['SMA_10'] <= previous_data['SMA_20']
-    if golden_cross:
-        logging_utils.log_trade(datetime.datetime.now(), symbol, 'golden_cross', 'signal', None, None, None)
-        print(f"🔍 Signal detected for {symbol}: Golden Cross!")
-        return True, confidence  # Signal, Confidence Score
-    return False, 0.0
-
-@retry_async()
-async def evaluate_rsi_dip(symbol, data, confidence):
-    """Evaluates the RSI dip strategy."""
-    if confidence == 0:
-        return False, 0.0 # Strategy disabled
-
-    latest_data = data.iloc[-1]
-    if latest_data['RSI'] < 30:
-        logging_utils.log_trade(datetime.datetime.now(), symbol, 'rsi_dip', 'signal', None, None, None)
-        print(f"🔍 Signal detected for {symbol}: RSI Dip!")
-        return True, confidence  # Signal, Confidence Score
-    return False, 0.0
+@retry_async
+async def evaluate_rsi_dip(candles):
+    """Evaluates the RSI Dip strategy."""
+    if len(candles) < 14: return None
+    df = pd.DataFrame(candles)
+    rsi = ta.momentum.RSIIndicator(df['close']).rsi()
+    if rsi.iloc[-1] < 45:
+        return {'signal': 'buy', 'confidence': 0.6}
+    return None
 
 async def evaluate_macd_crossover(symbol, data, confidence):
     """Evaluates the MACD crossover strategy."""
@@ -59,7 +52,7 @@ async def evaluate_bollinger_breakout(symbol, data, confidence):
         return True, confidence  # Signal, Confidence Score
     return False, 0.0
 
-@retry_async()
+@retry_async
 async def evaluate_awesome_oscillator(symbol, data, confidence):
     """Evaluates the Awesome Oscillator strategy."""
     if confidence == 0:
@@ -73,7 +66,7 @@ async def evaluate_awesome_oscillator(symbol, data, confidence):
         return True, confidence  # Signal, Confidence Score
     return False, 0.0
 
-@retry_async()
+@retry_async
 async def evaluate_ml_prediction(symbol, data, confidence):
     """Evaluates the ML prediction strategy."""
     if confidence == 0:
@@ -183,7 +176,7 @@ async def _evaluate_single_symbol_strategies(symbol, api, active_strategies, all
         print(f"❌ {log_message}")
         return None
 
-@retry_async()
+@retry_async
 async def evaluate_symbols_strategies_batch(symbols, api, active_strategies, all_strategies):
     """Evaluates all strategies for a given list of symbols concurrently."""
     tasks = [

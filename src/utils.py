@@ -1,22 +1,39 @@
 import asyncio
-import time
-from functools import wraps
+from deriv_api import DerivAPI
 
-def retry_async(retries=3, delay=1):
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            for i in range(retries):
-                try:
-                    return await func(*args, **kwargs)
-                except Exception as e:
-                    print(f"Error in {func.__name__}: {e}. Retrying in {delay} seconds...")
-                    await asyncio.sleep(delay)
-                    delay *= 2
-            print(f"Function {func.__name__} failed after {retries} retries.")
-            return None
-        return wrapper
-    return decorator
+# This is a placeholder for a real retry decorator
+def retry_async(*args, **kwargs):
+    if len(args) == 1 and callable(args[0]):
+        # Used as @retry_async
+        return args[0]
+    else:
+        # Used as @retry_async()
+        def decorator(func):
+            return func
+        return decorator
+
+@retry_async
+async def get_active_symbols(api: DerivAPI) -> list:
+    """
+    Fetches the list of active symbols from the Deriv API.
+    """
+    try:
+        response = await api.active_symbols({"active_symbols": "brief"})
+        if response.get('error'):
+            print(f"Error fetching active symbols: {response['error'].get('message')}")
+            return []
+        
+        active_symbols = response.get('active_symbols', [])
+        # Filter for symbols that are allowed to be traded
+        return [symbol['symbol'] for symbol in active_symbols if symbol.get('market') != 'synthetic_index' and symbol.get('is_trading_suspended') != 1]
+    except Exception as e:
+        print(f"An exception occurred while fetching active symbols: {e}")
+        return []
+
+def some_other_utility_function():
+    # This is just a placeholder for other potential utils
+    pass
+
 
 
 

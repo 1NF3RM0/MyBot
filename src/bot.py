@@ -1,26 +1,14 @@
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="pandas")
-
 import asyncio
-import pandas as pd
-from deriv_api import DerivAPI
-from deriv_api.errors import ResponseError
-from src import config
-from src.utils import retry_async, classify_market_condition
-from src.indicators import get_indicators
-
-import datetime
-import os
-from src import logging_utils
-import time
 import json
-from src import strategy_manager
-from src import param_tuner
+import datetime
+import copy
+from deriv_api import DerivAPI
+from src import config, logging_utils, strategy_manager
+from src.utils import get_active_symbols, retry_async
 from src.strategies import evaluate_golden_cross, evaluate_rsi_dip, evaluate_macd_crossover, evaluate_bollinger_breakout, evaluate_awesome_oscillator, evaluate_ml_prediction, evaluate_symbols_strategies_batch
 from src.execution import sell_contract, execute_trade
 from src.monitor import monitor_open_contracts
 from src.strategy_definitions import BASE_STRATEGIES
-import copy
 
 class TradingBot:
     def __init__(self):
@@ -30,53 +18,60 @@ class TradingBot:
         self.trade_cache = {}
         self.trading_parameters = {
             'cooldown_period': 3600,  # 1 hour in seconds
-            'sma_threshold': 0.001,
-            'rsi_threshold': 1,
-            'risk_percentage': 0.02
+            'risk_percentage': 2.0,
+            'stop_loss_percent': 10.0,
+            'take_profit_percent': 20.0,
         }
         self._is_running = False
-        self._manager = None
-        self.task = None
+        self._monitor_task = None
+        self.websocket = None
+        self.balance = None
+        self.currency = None
 
     async def _log(self, message):
+        if self.websocket:
+            log_entry = {'timestamp': datetime.datetime.now().isoformat(), 'message': message}
+            await self.websocket.broadcast(json.dumps(log_entry))
         print(message)
-        if self._manager:
-            await self._manager.broadcast(message)
 
-    async def start(self, manager):
-        if self._is_running:
-            await self._log("Bot is already running.")
-            return
-        self._manager = manager
+    async def start(self, websocket_manager):
+        self.websocket = websocket_manager
         self._is_running = True
-        self.task = asyncio.create_task(self.run())
+        await self._log("Starting bot...")
+        try:
+            self.api = DerivAPI(app_id=config.APP_ID)
+            await self._authorize_api(config.API_TOKEN)
+            await self._log("Successfully connected and authorized to Deriv API.")
+            
+            # Fetch account balance with timeout
+            try:
+                response = await asyncio.wait_for(self.api.balance(), timeout=10.0)
+                if response and not response.get('error'):
+                    self.balance = response['balance']['balance']
+                    self.currency = response['balance']['currency']
+                    await self._log(f"Account balance: {self.balance} {self.currency}")
+                else:
+                    error_message = response.get('error', {}).get('message', 'Unknown error')
+                    await self._log(f"Error: Failed to fetch account balance: {error_message}")
+            except asyncio.TimeoutError:
+                await self._log("Error: Timed out while fetching account balance.")
+            except Exception as e:
+                await self._log(f"An error occurred while fetching account balance: {e}")
+
+        except Exception as e:
+            await self._log(f"Error connecting to Deriv API: {e}")
+            self._is_running = False
+            return
+
+        self._monitor_task = asyncio.create_task(self.run())
         await self._log("Bot started successfully.")
 
     async def stop(self):
-        if not self._is_running:
-            await self._log("Bot is not running.")
-            return
-            
         self._is_running = False
-        if self.task:
-            self.task.cancel()
-            try:
-                await self.task
-            except asyncio.CancelledError:
-                pass # Expected
-        
-        # Graceful shutdown logic moved from finally block
+        if self._monitor_task:
+            self._monitor_task.cancel()
         if self.api:
             await self.api.disconnect()
-        
-        temp_file_path = "open_contracts.json.tmp"
-        try:
-            with open(temp_file_path, "w") as f:
-                json.dump(self.open_contracts, f)
-            os.replace(temp_file_path, "open_contracts.json")
-        except Exception as e:
-            await self._log(f"❌ Error saving open contracts: {e}")
-
         await self._log("Bot stopped successfully.")
 
     async def emergency_stop(self):
@@ -91,112 +86,109 @@ class TradingBot:
     async def run(self):
         """Main asynchronous function to run the trading bot."""
         logging_utils.init_db()
-
-        try:
-            with open("open_contracts.json", "r") as f:
-                self.open_contracts = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            await self._log(f"⚠️ Could not load open_contracts.json ({e}). Starting with no open contracts.")
-            self.open_contracts = []
-
-        try:
-            self.api = DerivAPI(app_id=config.APP_ID)
-            authorize_response = await self._authorize_api(config.API_TOKEN)
-            if authorize_response.get('error'):
-                log_message = f"Authorization error: {authorize_response['error']['message']}"
-                logging_utils.log_trade(datetime.datetime.now(), None, None, 'error', None, None, log_message)
-                await self._log(f"❌ {log_message}. Bot will exit.")
-                self._is_running = False
-                return
-
-            while self._is_running:
-                traded_symbols_this_cycle = set()
-                try:
-                    balance_response = await self._get_balance()
-                    if balance_response.get('error'):
-                        log_message = f"Error getting balance: {balance_response['error']['message']}"
-                        logging_utils.log_trade(datetime.datetime.now(), None, None, 'error', None, None, log_message)
-                        await self._log(f"❌ {log_message}. Retrying in 60 seconds.")
-                        await asyncio.sleep(60)
-                        continue
-                    await self._log(f"💰 Account Balance: ${balance_response['balance']['balance']:.2f} {balance_response['balance']['currency']}")
-
-                    asset_index_response = await self._get_asset_index()
-                    symbols_to_trade = []
-                    forex_commodities = ['frxXAUUSD', 'frxXPDUSD', 'frxXPTUSD', 'frxXAGUSD']
-
-                    for asset in asset_index_response['asset_index']:
-                        symbol = asset[0]
-                        if symbol.startswith('frx') and symbol not in forex_commodities:
-                            symbols_to_trade.append(symbol)
-                        elif symbol.startswith('OTC_'):
-                            symbols_to_trade.append(symbol)
-                        elif symbol in forex_commodities:
-                            symbols_to_trade.append(symbol)
-
-                    await self._log(f"📊 Actively monitoring these symbols: {', '.join(symbols_to_trade)}")
-
-                    market_volatility = await param_tuner.get_composite_market_volatility(self.api, symbols_to_trade)
-                    self.trading_parameters = param_tuner.adjust_parameters(self.trading_parameters, market_volatility)
-                    
-                    performance_data = strategy_manager.get_strategy_performance()
-                    self.strategies = strategy_manager.adjust_strategy_confidence(self.strategies, performance_data)
-
-                    active_strategies = [s for s in self.strategies.values() if s.is_active]
-
-                    results = await evaluate_symbols_strategies_batch(symbols_to_trade, self.api, active_strategies, self.strategies)
-
-                    for result in results:
-                        if result:
-                            symbol = result['symbol']
-                            signals = result['signals']
-                            data = result['data']
-
-                            confirmed_strategies = signals
-                            total_confidence = sum(s.confidence for s in signals)
-
-                            if len(confirmed_strategies) >= 2 and total_confidence >= config.MIN_COMBINED_CONFIDENCE:
-                                try:
-                                    # Pass the _log method to execute_trade
-                                    await execute_trade(self.api, symbol, confirmed_strategies, balance_response, self.trading_parameters, self.open_contracts, traded_symbols_this_cycle, self.trade_cache, data, self._log)
-                                except Exception as e:
-                                    log_message = f"Error during trade execution for {symbol}: {e}"
-                                    logging_utils.log_trade(datetime.datetime.now(), symbol, str([s.id for s in confirmed_strategies]), 'error', None, None, log_message)
-                                    await self._log(f"❌ {log_message}")
-                            else:
-                                await self._log(f"⚠️ Not enough confirmed strategies ({len(confirmed_strategies)}) or combined confidence ({total_confidence:.2f}) below threshold ({config.MIN_COMBINED_CONFIDENCE}) for {symbol}. Skipping trade.")
-                    
-                    await self.monitor_open_contracts()
-
-                    await self._log("\n😴 Cycle finished. Resting for 15 minutes...\n")
-                    await asyncio.sleep(15 * 60)
-
-                except asyncio.CancelledError:
-                    await self._log("Run loop cancelled.")
-                    break
-                except Exception as e:
-                    log_message = f"An unexpected error occurred during bot execution: {e}"
-                    logging_utils.log_trade(datetime.datetime.now(), None, None, 'error', None, None, log_message)
-                    await self._log(f"❌ An unexpected error occurred: {e}")
         
-        except Exception as e:
-            await self._log(f"❌ A critical error occurred in the run method: {e}")
-        finally:
-            await self._log("✅ Bot run loop finished.")
+        while self._is_running:
+            try:
+                await self._log("Starting new trading cycle...")
+                traded_symbols_this_cycle = set()
+                
+                # 1. Fetch active symbols with timeout
+                try:
+                    active_symbols = await asyncio.wait_for(get_active_symbols(self.api), timeout=15.0)
+                except asyncio.TimeoutError:
+                    await self._log("Error: Timed out fetching active symbols. Retrying in 60s.")
+                    await asyncio.sleep(60)
+                    continue
+                
+                await self._log(f"Found {len(active_symbols)} active symbols. Evaluating strategies...")
 
-    @retry_async()
+                # 2. Evaluate strategies in batches with timeout
+                try:
+                    all_proposals = await asyncio.wait_for(
+                        evaluate_symbols_strategies_batch(self.api, active_symbols, self.strategies, self.strategies),
+                        timeout=30.0
+                    )
+                except asyncio.TimeoutError:
+                    await self._log("Error: Timed out evaluating strategies. Retrying in 60s.")
+                    await asyncio.sleep(60)
+                    continue
+                
+                await self._log(f"Finished evaluating. Found {len(all_proposals)} potential trade(s).")
+
+                if not all_proposals:
+                    await self._log("No valid trading signals found in this cycle.")
+
+                # 3. Filter and execute trades
+                for proposal in all_proposals:
+                    symbol = proposal['symbol']
+                    
+                    # Check cooldown
+                    last_trade_time = self.trade_cache.get(symbol)
+                    if last_trade_time and (datetime.datetime.now() - last_trade_time).total_seconds() < self.trading_parameters['cooldown_period']:
+                        await self._log(f"Skipping {symbol}: Cooldown period active.")
+                        continue
+
+                    # Execute trade
+                    contract = await execute_trade(
+                        self.api,
+                        symbol,
+                        proposal['signals'],
+                        {'balance': {'balance': self.balance, 'currency': self.currency}},
+                        self.trading_parameters,
+                        self.open_contracts,
+                        traded_symbols_this_cycle,
+                        self.trade_cache,
+                        proposal['data'],
+                        self._log
+                    )
+                    if contract:
+                        self.open_contracts.append(contract)
+                        self.trade_cache[symbol] = datetime.datetime.now()
+                        logging_utils.log_trade(
+                            timestamp=datetime.datetime.now(),
+                            symbol=symbol,
+                            strategy=str(proposal['strategy_ids']),
+                            type='buy',
+                            entry_price=contract['buy_price'],
+                            status='Open',
+                            pnl=0.0,
+                            user_id=1 # This needs to be dynamic in a multi-user context
+                        )
+
+                # 4. Monitor open contracts
+                await monitor_open_contracts(self.api, self.open_contracts, self._log, self.update_balance_on_close)
+                
+                await self._log(f"Cycle finished. Waiting {config.LOOP_DELAY} seconds.")
+                await asyncio.sleep(config.LOOP_DELAY)
+
+            except asyncio.CancelledError:
+                await self._log("Trading loop cancelled.")
+                break
+            except Exception as e:
+                await self._log(f"An unexpected error occurred in the main loop: {e}")
+                await self._log("Restarting trading loop in 60 seconds...")
+                await asyncio.sleep(60)
+    
+    async def update_balance_on_close(self, sell_receipt):
+        """Callback to update balance when a contract is sold."""
+        if self.balance is not None and 'balance_after' in sell_receipt:
+            self.balance = sell_receipt['balance_after']
+            await self._log(f"Contract sold. New account balance: {self.balance} {self.currency}")
+
+
+    @retry_async
     async def _authorize_api(self, api_token):
         return await self.api.authorize(api_token)
 
-    @retry_async()
+    @retry_async
     async def _get_balance(self):
         return await self.api.balance()
 
-    @retry_async()
+    @retry_async
     async def _get_asset_index(self):
         return await self.api.asset_index()
 
-    @retry_async()
+    @retry_async
     async def monitor_open_contracts(self):
         """Monitors open contracts for exit conditions and logs outcomes."""
         try:

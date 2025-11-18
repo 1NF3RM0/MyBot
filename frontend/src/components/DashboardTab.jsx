@@ -15,6 +15,7 @@ const DashboardTab = ({ logs }) => {
   });
   const [performanceData, setPerformanceData] = useState([]);
   const [recentTrades, setRecentTrades] = useState([]);
+  const [account, setAccount] = useState({ balance: null, currency: null });
 
   const fetchBotStatus = useCallback(async () => {
     try {
@@ -72,20 +73,37 @@ const DashboardTab = ({ logs }) => {
     }
   }, [token]);
 
+  const fetchAccountInfo = useCallback(async () => {
+    if (!token) return;
+    try {
+        const response = await fetch('http://localhost:8000/bot/account', {
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (response.ok) {
+            const data = await response.json();
+            setAccount(data);
+        }
+    } catch (error) {
+        console.error('Failed to fetch account info:', error);
+    }
+  }, [token]);
+
   useEffect(() => {
     if (token) {
       fetchBotStatus();
       fetchMetrics();
       fetchRecentTrades();
       fetchPerformanceData();
+      fetchAccountInfo();
       const interval = setInterval(() => {
         fetchMetrics();
         fetchRecentTrades();
         fetchPerformanceData();
+        fetchAccountInfo();
       }, 5000);
       return () => clearInterval(interval);
     }
-  }, [token, fetchBotStatus, fetchMetrics, fetchRecentTrades, fetchPerformanceData]);
+  }, [token, fetchBotStatus, fetchMetrics, fetchRecentTrades, fetchPerformanceData, fetchAccountInfo]);
 
   const startBot = async () => {
     try {
@@ -153,6 +171,10 @@ const DashboardTab = ({ logs }) => {
       </div>
 
       <div className="metrics-grid">
+        <div className="metric-card">
+          <h3>Account Balance</h3>
+          <p>{account.balance ? `${account.balance.toFixed(2)} ${account.currency}` : 'N/A'}</p>
+        </div>
         <div className="metric-card">
           <h3>Total P/L</h3>
           <p className={metrics.total_pnl >= 0 ? 'text-success' : 'text-danger'}>${metrics.total_pnl.toFixed(2)}</p>

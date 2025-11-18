@@ -9,7 +9,7 @@ from src import config
 from src.risk import calculate_lot_size
 from .utils import retry_async
 
-@retry_async()
+@retry_async
 async def sell_contract(api, contract_id, log_func):
     """Sells an open contract."""
     try:
@@ -28,7 +28,7 @@ async def sell_contract(api, contract_id, log_func):
         await log_func(f"❌ Exception while selling contract {contract_id}: {e}")
         return False
 
-@retry_async()
+@retry_async
 async def execute_trade(api, symbol, confirmed_strategies, balance_response, trading_parameters, open_contracts, traded_symbols_this_cycle, trade_cache, data, log_func):
     """Executes a trade based on confirmed strategies."""
     strategy_ids_tuple = tuple(sorted([s.id for s in confirmed_strategies]))

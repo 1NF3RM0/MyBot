@@ -1,93 +1,125 @@
-# Project Overview: MyBot (Developer Documentation)
+# Project Overview
 
-This document provides a technical overview of the MyBot trading application, intended for developers and contributors.
+This project is an advanced, asynchronous Python trading bot designed for the Deriv platform. It aims to automate trading across various asset classes, including forex, indices, and commodities, by leveraging a multi-strategy technical analysis engine, real-time market classification, and a powerful web interface for comprehensive control, monitoring, and analysis.
 
-## 1. Architecture
+The bot's architecture is built around the `deriv_api` library for interacting with the Deriv platform and the `ta` library for comprehensive technical indicator calculations. It operates asynchronously using `asyncio` for efficient, non-blocking communication with the trading API. The backend is implemented using FastAPI, and the frontend is a React application.
 
-MyBot is a client-server application composed of a Python backend and a React frontend.
+Key features include:
+-   **Dynamic Symbol Fetching:** The bot automatically retrieves a list of available trading instruments from the Deriv API, ensuring it always works with up-to-date and valid symbols.
+-   **Technical Analysis:** It calculates a range of indicators, including Moving Averages (SMA), Relative Strength Index (RSI), MACD, Bollinger Bands, Ichimoku Cloud, and Average True Range (ATR).
+-   **Multi-Strategy Confirmation:** Trades are only proposed if at least two strategies agree and their combined confidence score exceeds a threshold.
+-   **Dynamic Strategy Selection:** Strategies are dynamically selected based on classified market conditions (trending, ranging, volatile).
+-   **Strategy Evolution Engine:** Strategies are managed as `Strategy` objects with tunable parameters, confidence scores, and active status. Performance is tracked, and strategies can be re-enabled from a disabled state if they show recent success.
+-   **Parameter Auto-tuning:** Trading parameters like cooldown period, SMA/RSI thresholds, and risk percentage are dynamically adjusted based on market volatility.
+-   **Trade Cooldown and Similarity Checks:** Prevents re-trading the same setup within a cooldown period or if market conditions are too similar.
+-   **Single Trade Per Symbol Per Cycle:** Ensures only one contract is proposed per symbol within a single main bot loop iteration.
+-   **Proposal Validation:** Rejects trades if `ask_price > 20` or `payout < 15`.
+-   **Early Exit Logic:** Monitors open contracts and initiates early exits (sells) if conditions like RSI overbought/oversold are met.
+-   **Comprehensive Logging:** All significant events (signals, proposals, buys, errors, skipped trades, contract outcomes) are logged to `trading_log.db` (SQLite) with timestamps, symbol, strategy, action, price, payout, and outcome.
+-   **Robust Error Handling:** Implements `retry_async` decorator with exponential backoff for API-dependent asynchronous functions.
+-   **Graceful Shutdown:** Catches `KeyboardInterrupt` to cleanly disconnect from the API and save `open_contracts` to `open_contracts.json`.
+-   **Web Interface:** A React frontend provides a dashboard for remote control (start/stop/emergency stop), real-time monitoring of logs and status, live account balance, and centralized configuration management.
 
-### Backend
+# Building and Running
 
--   **Framework:** FastAPI
--   **Entry Point:** `src/main.py`
--   **Description:** The backend exposes a REST API to control and configure the bot. It uses a long-running `TradingBot` instance (`src/bot.py`) to manage the trading logic. All communication about the bot's status and logs is pushed to the frontend via a WebSocket connection.
+## 1. Installation
 
-### Frontend
+To set up the project, first install the required dependencies for both the Python backend and the React frontend. It is recommended to use a virtual environment for Python.
 
--   **Framework:** React (bootstrapped with Vite)
--   **Location:** `/frontend`
--   **Description:** The single-page application (SPA) provides a dashboard for users to interact with the bot. It communicates with the backend via HTTP requests for control actions (start, stop, configure) and a WebSocket for receiving real-time updates.
+### Backend Dependencies
 
-## 2. Backend API & Endpoints
-
-The backend server runs on `http://localhost:8000`.
-
-### REST API
-
-| Method | Endpoint      | Description                                                 |
-| :----- | :------------ | :---------------------------------------------------------- |
-| `POST` | `/bot/start`  | Starts the trading bot's main run loop.                     |
-| `POST` | `/bot/stop`   | Stops the trading bot gracefully.                           |
-| `GET`  | `/bot/status` | Returns the current status (`running` or `stopped`).        |
-| `GET`  | `/config`     | Retrieves the current `APP_ID` and `API_TOKEN`.             |
-| `POST` | `/config`     | Updates the `APP_ID` and `API_TOKEN` in `src/config.py`.    |
-
-### WebSocket
-
--   **Endpoint:** `ws://localhost:8000/ws`
--   **Purpose:** Streams JSON-encoded messages from the server to all connected clients. This is the primary channel for real-time logs and status updates. The `ConnectionManager` class in `src/main.py` manages all active WebSocket connections.
-
-## 3. Building and Running
-
-### Prerequisites
-
--   Python 3.11+
--   Node.js 18+ and `npm`
-
-### Step 1: Run the Backend
-
-From the project root:
 ```bash
-# Install dependencies
-pip install -r requirements.txt --break-system-packages
+# Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
 
-# Run the server
-python3 -m src.main
+# Install Python dependencies
+pip install -r requirements.txt
 ```
 
-### Step 2: Run the Frontend
+### Frontend Dependencies
 
-In a separate terminal, from the project root:
 ```bash
 # Navigate to the frontend directory
 cd frontend
 
-# Install dependencies
+# Install Node.js dependencies
 npm install
-
-# Run the dev server
-npm run dev
 ```
 
-### Step 3: Access the Application
+## 2. Configuration
 
-Open a web browser and navigate to the local URL provided by the Vite dev server (e.g., `http://localhost:5173`).
+Before running the bot, you must configure your Deriv API credentials. This can be done by editing `src/config.py` or through the web UI after initial setup.
 
-## 4. Key Modules & Conventions
+```python
+# src/config.py
 
--   **`src/main.py`**: The FastAPI application server. Manages the bot's lifecycle and API endpoints.
--   **`src/bot.py`**: Contains the core `TradingBot` class, refactored for API control with `start()` and `stop()` methods.
--   **`src/config.py`**: Stores configuration variables. It is read from and written to by the API.
--   **`/frontend`**: Contains the entire React application, including components for the dashboard, settings, and monitoring tabs.
--   **Logging**: The `_log` method in the `TradingBot` class now serves a dual purpose: it prints to the console an broadcasts the message over the WebSocket, ensuring the UI is always in sync.
+APP_ID = "YOUR_APP_ID"  # Replace with your Deriv App ID
+API_TOKEN = "YOUR_API_TOKEN"  # Replace with your Deriv API Token
 
-## 5. Other Scripts
+# ... other trading parameters
+```
 
--   **`src/report_generator.py`**: Generates a performance report for trading strategies.
-    ```bash
-    python3 -m src.report_generator
-    ```
--   **`tests/`**: Contains the project's unit tests.
-    ```bash
-    python -m unittest discover tests
-    ```
+## 3. Running the Bot
+
+The application runs in two parts: a Python backend (FastAPI) and a React frontend.
+
+### Running the Backend
+
+To run the trading bot's backend, execute the following command from the project's root directory:
+
+```bash
+python3 -m src.main
+```
+The backend will typically run on `http://localhost:8000`.
+
+### Running the Frontend
+
+In a **new terminal**, navigate to the `frontend` directory and run the React application:
+
+```bash
+cd frontend
+npm run dev
+```
+The frontend will typically run on `http://localhost:5173`.
+
+### Launching the Dashboard
+
+Open your web browser and navigate to the frontend URL (e.g., `http://localhost:5173`). You can now register, log in, start the bot, and monitor its activity from the dashboard.
+
+## 4. Running Tests
+
+To run the test suite, use the following command from the project's root directory:
+
+```bash
+python -m unittest discover tests
+```
+
+## 5. Generating Strategy Performance Report
+
+To generate a report on strategy performance, execute the following command:
+
+```bash
+python3 -m src.report_generator
+```
+
+## 6. Running the Dashboard (Streamlit)
+
+To run the Streamlit performance dashboard (separate from the main React frontend), execute the following command from the project's root directory:
+
+```bash
+streamlit run src/dashboard.py
+```
+
+# Development Conventions
+
+*   **Modularity:** The code is organized into modules with distinct responsibilities (`bot.py` for main logic, `config.py` for configuration, `utils.py` for utilities, `logging_utils.py` for logging, `strategy_manager.py` for strategy management, `param_tuner.py` for parameter tuning, `report_generator.py` for reporting, `main.py` for FastAPI endpoints, `auth.py` for authentication, `database.py` for database interactions).
+*   **Asynchronous Programming:** The bot leverages `asyncio` for efficient handling of API requests and responses.
+*   **Configuration Management:** API credentials and trading parameters are externalized in `src/config.py` and can be managed via the web UI for easy management and security.
+*   **Dynamic Symbol Discovery:** Trading symbols are fetched dynamically from the Deriv API, making the bot adaptable to changes in available instruments.
+*   **Technical Analysis Integration:** The `ta` library is used for comprehensive and standardized calculation of technical indicators.
+*   **Error Handling:** The bot includes `try-except` blocks and a `retry_async` decorator to gracefully handle API errors and other exceptions, providing informative messages.
+*   **Strategy Management:** Strategies are treated as objects, allowing for dynamic adjustment of confidence scores, activation/deactivation, and future mutation.
+*   **Parameter Tuning:** Key trading parameters are dynamically adjusted based on real-time market conditions.
+*   **Frontend Structure:** The React frontend follows a component-based architecture with pages, components, and context for state management.
+*   **API Interaction:** The frontend interacts with the FastAPI backend via REST endpoints and WebSockets for real-time updates.

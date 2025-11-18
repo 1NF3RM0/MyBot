@@ -501,17 +501,17 @@ class TradingBot:
                                     await self.update_balance_on_close(sell_response)
                                 else:
                                     if "Resale of this contract is not offered" in log_message:
-                                        contract['is_resale_offered'] = False
-                                        await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
-                            else:
-                                await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
-                                if trade_log_id:
-                                    update_trade(
-                                        trade_id=trade_log_id,
-                                        message=f"Resale not available for contract {contract_id}. Continuing to monitor."
-                                    )
-                                contract['is_resale_offered'] = False                    elif contract_type == 'PUT' and latest_rsi < 30:
-                        log_message = f"RSI oversold for {symbol}. Initiating early exit for contract {contract_id}."
+                                                                                contract['is_resale_offered'] = False
+                                                                                await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
+                                                                        else:
+                                                                            await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
+                                                                            if trade_log_id:
+                                                                                update_trade(
+                                                                                    trade_id=trade_log_id,
+                                                                                    message=f"Resale not available for contract {contract_id}. Continuing to monitor."
+                                                                                )
+                                                                            contract['is_resale_offered'] = False
+                                                            elif contract_type == 'PUT' and latest_rsi < 30:                        log_message = f"RSI oversold for {symbol}. Initiating early exit for contract {contract_id}."
                         await self._log(f"⚠️ {log_message}")
                         contract_details_response = await self.api.send({'proposal_open_contract': 1, 'contract_id': contract_id})
                         if contract_details_response.get('error'):

@@ -416,142 +416,143 @@ class TradingBot:
                         continue
 
                     if latest_engulfing != 0:
-                                            if contract_type == 'CALL' and latest_engulfing == -100:
-                                                log_message = f"Bearish Engulfing pattern detected for {symbol}. Initiating early exit for contract {contract_id}."
-                                                await self._log(f"⚠️ {log_message}")
-                                                if contract_info.get('is_sell_available') and contract.get('is_resale_offered', True):
-                                                    sell_response = await sell_contract(self.api, contract_id, self._log)
-                                                    if sell_response:
-                                                        sell_price = sell_response['sell']['sold_for']
-                                                        pnl = sell_price - contract.get('buy_price', 0)
-                                                        if trade_log_id:
-                                                            update_trade(
-                                                                trade_id=trade_log_id,
-                                                                exit_price=sell_price,
-                                                                pnl=pnl,
-                                                                status='win' if pnl > 0 else 'loss',
-                                                                message=log_message
-                                                            )
-                                                        await self.update_balance_on_close(sell_response)
-                                                    else:
-                                                        if "Resale of this contract is not offered" in log_message:
-                                                            contract['is_resale_offered'] = False
-                                                            await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
-                                                    continue
-                                                elif not contract_info.get('is_sell_available'):
-                                                    await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
-                                                    contract['is_resale_offered'] = False
-                                                elif not contract.get('is_resale_offered', True):
-                                                    await self._log(f"⚠️ Contract {contract_id} for {symbol} was previously identified as not resaleable. Continuing to monitor.")
-                                            elif contract_type == 'PUT' and latest_engulfing == 100:
-                                                log_message = f"Bullish Engulfing pattern detected for {symbol}. Initiating early exit for contract {contract_id}."
-                                                await self._log(f"⚠️ {log_message}")
-                                                if contract_info.get('is_sell_available') and contract.get('is_resale_offered', True):
-                                                    sell_response = await sell_contract(self.api, contract_id, self._log)
-                                                    if sell_response:
-                                                        sell_price = sell_response['sell']['sold_for']
-                                                        pnl = sell_price - contract.get('buy_price', 0)
-                                                        if trade_log_id:
-                                                            update_trade(
-                                                                trade_id=trade_log_id,
-                                                                exit_price=sell_price,
-                                                                pnl=pnl,
-                                                                status='closed', # Determine win/loss based on pnl
-                                                                message=log_message
-                                                            )
-                                                    else:
-                                                        if "Resale of this contract is not offered" in log_message:
-                                                            contract['is_resale_offered'] = False
-                                                            await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
-                                                    continue
-                                                elif not contract_info.get('is_sell_available'):
-                                                    await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
-                                                    contract['is_resale_offered'] = False
-                                                elif not contract.get('is_resale_offered', True):
-                                                    await self._log(f"⚠️ Contract {contract_id} for {symbol} was previously identified as not resaleable. Continuing to monitor.")
-                        
-                                            if contract_type == 'CALL' and latest_rsi > 70:
-                                                log_message = f"RSI overbought for {symbol}. Initiating early exit for contract {contract_id}."
-                                                await self._log(f"⚠️ {log_message}")
-                                                contract_details_response = await self.api.send({'proposal_open_contract': 1, 'contract_id': contract_id})
-                                                if contract_details_response.get('error'):
-                                                    log_message = f"Error getting contract details for resale check for {contract_id}: {contract_details_response['error']['message']}"
-                                                    if trade_log_id:
-                                                        update_trade(
-                                                            trade_id=trade_log_id,
-                                                            status='error',
-                                                            message=log_message
-                                                        )
-                                                    await self._log(f"❌ {log_message}")
-                                                else:
-                                                    contract_info = contract_details_response['proposal_open_contract']
-                                                    if contract_info.get('is_sell_available') and contract.get('is_resale_offered', True):
-                                                        sell_response = await sell_contract(self.api, contract_id, self._log)
-                                                        if sell_response:
-                                                            sell_price = sell_response['sell']['sold_for']
-                                                            pnl = sell_price - contract.get('buy_price', 0)
-                                                            if trade_log_id:
-                                                                update_trade(
-                                                                    trade_id=trade_log_id,
-                                                                    exit_price=sell_price,
-                                                                    pnl=pnl,
-                                                                    status='win' if pnl > 0 else 'loss',
-                                                                    message=log_message
-                                                                )
-                                                            await self.update_balance_on_close(sell_response)
-                                                        else:
-                                                            if "Resale of this contract is not offered" in log_message:
-                                                                contract['is_resale_offered'] = False
-                                                                await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
-                                                    else:
-                                                        await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
-                                                        if trade_log_id:
-                                                            update_trade(
-                                                                trade_id=trade_log_id,
-                                                                message=f"Resale not available for contract {contract_id}. Continuing to monitor."
-                                                            )
-                                                        contract['is_resale_offered'] = False
-                                            elif contract_type == 'PUT' and latest_rsi < 30:
-                                                log_message = f"RSI oversold for {symbol}. Initiating early exit for contract {contract_id}."
-                                                await self._log(f"⚠️ {log_message}")
-                                                contract_details_response = await self.api.send({'proposal_open_contract': 1, 'contract_id': contract_id})
-                                                if contract_details_response.get('error'):
-                                                    log_message = f"Error getting contract details for resale check for {contract_id}: {contract_details_response['error']['message']}"
-                                                    if trade_log_id:
-                                                        update_trade(
-                                                            trade_id=trade_log_id,
-                                                            status='error',
-                                                            message=log_message
-                                                        )
-                                                    await self._log(f"❌ {log_message}")
-                                                else:
-                                                    contract_info = contract_details_response['proposal_open_contract']
-                                                    if contract_info.get('is_sell_available') and contract.get('is_resale_offered', True):
-                                                        sell_response = await sell_contract(self.api, contract_id, self._log)
-                                                        if sell_response:
-                                                            sell_price = sell_response['sell']['sold_for']
-                                                            pnl = sell_price - contract.get('buy_price', 0)
-                                                            if trade_log_id:
-                                                                update_trade(
-                                                                    trade_id=trade_log_id,
-                                                                    exit_price=sell_price,
-                                                                    pnl=pnl,
-                                                                    status='win' if pnl > 0 else 'loss',
-                                                                    message=log_message
-                                                                )
-                                                            await self.update_balance_on_close(sell_response)
-                                                        else:
-                                                            if "Resale of this contract is not offered" in log_message:
-                                                                contract['is_resale_offered'] = False
-                                                                await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
-                                                    else:
-                                                        await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
-                                                        if trade_log_id:
-                                                            update_trade(
-                                                                trade_id=trade_log_id,
-                                                                message=f"Resale not available for contract {contract_id}. Continuing to monitor."
-                                                            )
-                                                        contract['is_resale_offered'] = False                except Exception as e:
+                        if contract_type == 'CALL' and latest_engulfing == -100:
+                            log_message = f"Bearish Engulfing pattern detected for {symbol}. Initiating early exit for contract {contract_id}."
+                            await self._log(f"⚠️ {log_message}")
+                            if contract_info.get('is_sell_available') and contract.get('is_resale_offered', True):
+                                sell_response = await sell_contract(self.api, contract_id, self._log)
+                                if sell_response:
+                                    sell_price = sell_response['sell']['sold_for']
+                                    pnl = sell_price - contract.get('buy_price', 0)
+                                    if trade_log_id:
+                                        update_trade(
+                                            trade_id=trade_log_id,
+                                            exit_price=sell_price,
+                                            pnl=pnl,
+                                            status='win' if pnl > 0 else 'loss',
+                                            message=log_message
+                                        )
+                                    await self.update_balance_on_close(sell_response)
+                                else:
+                                    if "Resale of this contract is not offered" in log_message:
+                                        contract['is_resale_offered'] = False
+                                        await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
+                                continue
+                            elif not contract_info.get('is_sell_available'):
+                                await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
+                                contract['is_resale_offered'] = False
+                            elif not contract.get('is_resale_offered', True):
+                                await self._log(f"⚠️ Contract {contract_id} for {symbol} was previously identified as not resaleable. Continuing to monitor.")
+                        elif contract_type == 'PUT' and latest_engulfing == 100:
+                            log_message = f"Bullish Engulfing pattern detected for {symbol}. Initiating early exit for contract {contract_id}."
+                            await self._log(f"⚠️ {log_message}")
+                            if contract_info.get('is_sell_available') and contract.get('is_resale_offered', True):
+                                sell_response = await sell_contract(self.api, contract_id, self._log)
+                                if sell_response:
+                                    sell_price = sell_response['sell']['sold_for']
+                                    pnl = sell_price - contract.get('buy_price', 0)
+                                    if trade_log_id:
+                                        update_trade(
+                                            trade_id=trade_log_id,
+                                            exit_price=sell_price,
+                                            pnl=pnl,
+                                            status='closed', # Determine win/loss based on pnl
+                                            message=log_message
+                                        )
+                                else:
+                                    if "Resale of this contract is not offered" in log_message:
+                                        contract['is_resale_offered'] = False
+                                        await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
+                                continue
+                            elif not contract_info.get('is_sell_available'):
+                                await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
+                                contract['is_resale_offered'] = False
+                            elif not contract.get('is_resale_offered', True):
+                                await self._log(f"⚠️ Contract {contract_id} for {symbol} was previously identified as not resaleable. Continuing to monitor.")
+
+                    if contract_type == 'CALL' and latest_rsi > 70:
+                        log_message = f"RSI overbought for {symbol}. Initiating early exit for contract {contract_id}."
+                        await self._log(f"⚠️ {log_message}")
+                        contract_details_response = await self.api.send({'proposal_open_contract': 1, 'contract_id': contract_id})
+                        if contract_details_response.get('error'):
+                            log_message = f"Error getting contract details for resale check for {contract_id}: {contract_details_response['error']['message']}"
+                            if trade_log_id:
+                                update_trade(
+                                    trade_id=trade_log_id,
+                                    status='error',
+                                    message=log_message
+                                )
+                            await self._log(f"❌ {log_message}")
+                        else:
+                            contract_info = contract_details_response['proposal_open_contract']
+                            if contract_info.get('is_sell_available') and contract.get('is_resale_offered', True):
+                                sell_response = await sell_contract(self.api, contract_id, self._log)
+                                if sell_response:
+                                    sell_price = sell_response['sell']['sold_for']
+                                    pnl = sell_price - contract.get('buy_price', 0)
+                                    if trade_log_id:
+                                        update_trade(
+                                            trade_id=trade_log_id,
+                                            exit_price=sell_price,
+                                            pnl=pnl,
+                                            status='win' if pnl > 0 else 'loss',
+                                            message=log_message
+                                        )
+                                    await self.update_balance_on_close(sell_response)
+                                else:
+                                    if "Resale of this contract is not offered" in log_message:
+                                        contract['is_resale_offered'] = False
+                                        await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
+                            else:
+                                await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
+                                if trade_log_id:
+                                    update_trade(
+                                        trade_id=trade_log_id,
+                                        message=f"Resale not available for contract {contract_id}. Continuing to monitor."
+                                    )
+                                contract['is_resale_offered'] = False
+                    elif contract_type == 'PUT' and latest_rsi < 30:
+                        log_message = f"RSI oversold for {symbol}. Initiating early exit for contract {contract_id}."
+                        await self._log(f"⚠️ {log_message}")
+                        contract_details_response = await self.api.send({'proposal_open_contract': 1, 'contract_id': contract_id})
+                        if contract_details_response.get('error'):
+                            log_message = f"Error getting contract details for resale check for {contract_id}: {contract_details_response['error']['message']}"
+                            if trade_log_id:
+                                update_trade(
+                                    trade_id=trade_log_id,
+                                    status='error',
+                                    message=log_message
+                                )
+                            await self._log(f"❌ {log_message}")
+                        else:
+                            contract_info = contract_details_response['proposal_open_contract']
+                            if contract_info.get('is_sell_available') and contract.get('is_resale_offered', True):
+                                sell_response = await sell_contract(self.api, contract_id, self._log)
+                                if sell_response:
+                                    sell_price = sell_response['sell']['sold_for']
+                                    pnl = sell_price - contract.get('buy_price', 0)
+                                    if trade_log_id:
+                                        update_trade(
+                                            trade_id=trade_log_id,
+                                            exit_price=sell_price,
+                                            pnl=pnl,
+                                            status='win' if pnl > 0 else 'loss',
+                                            message=log_message
+                                        )
+                                    await self.update_balance_on_close(sell_response)
+                                else:
+                                    if "Resale of this contract is not offered" in log_message:
+                                        contract['is_resale_offered'] = False
+                                        await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
+                            else:
+                                await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
+                                if trade_log_id:
+                                    update_trade(
+                                        trade_id=trade_log_id,
+                                        message=f"Resale not available for contract {contract_id}. Continuing to monitor."
+                                    )
+                                contract['is_resale_offered'] = False
+                except Exception as e:
                     log_message = f"Unhandled exception processing contract {contract_id}: {e}"
                     if trade_log_id:
                         update_trade(

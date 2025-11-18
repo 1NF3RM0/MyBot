@@ -18,3 +18,5 @@ logs/
 .vscode/
 .idea/
 GEMINI.md
+trading_app.db
+trading_log.db

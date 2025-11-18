@@ -92,7 +92,7 @@ async def start_bot(current_user: schemas.User = Depends(auth.get_current_active
     if user_id in bot_instances and bot_instances[user_id]._is_running:
         return JSONResponse(content={"status": "error", "message": "Bot is already running."}, status_code=400)
     
-    bot_instances[user_id] = TradingBot()
+    bot_instances[user_id] = TradingBot(user_id=user_id)
     await bot_instances[user_id].start(manager)
     return {"status": "success", "message": "Bot started."}
 

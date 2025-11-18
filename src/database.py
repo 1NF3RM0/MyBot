@@ -55,6 +55,7 @@ class TradeLog(Base):
     exit_price = Column(Float, nullable=True)
     pnl = Column(Float, nullable=True)
     status = Column(String) # e.g., 'open', 'closed', 'win', 'loss'
+    message = Column(String, nullable=True)
     
     user = relationship("User", back_populates="trade_logs")
 

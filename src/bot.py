@@ -3,7 +3,9 @@ import json
 import datetime
 import copy
 from deriv_api import DerivAPI
-from src import config, logging_utils, strategy_manager
+from deriv_api.errors import ResponseError
+from src import config, strategy_manager
+from src.logging_utils import log_new_trade, update_trade
 from src.utils import get_active_symbols, retry_async
 from src.strategies import evaluate_golden_cross, evaluate_rsi_dip, evaluate_macd_crossover, evaluate_bollinger_breakout, evaluate_awesome_oscillator, evaluate_ml_prediction, evaluate_symbols_strategies_batch
 from src.execution import sell_contract, execute_trade
@@ -11,7 +13,7 @@ from src.monitor import monitor_open_contracts
 from src.strategy_definitions import BASE_STRATEGIES
 
 class TradingBot:
-    def __init__(self):
+    def __init__(self, user_id: int):
         self.api = None
         self.strategies = copy.deepcopy(BASE_STRATEGIES)
         self.open_contracts = []
@@ -27,6 +29,7 @@ class TradingBot:
         self.websocket = None
         self.balance = None
         self.currency = None
+        self.user_id = user_id
 
     async def _log(self, message):
         if self.websocket:
@@ -85,7 +88,7 @@ class TradingBot:
 
     async def run(self):
         """Main asynchronous function to run the trading bot."""
-        logging_utils.init_db()
+
         
         while self._is_running:
             try:
@@ -105,7 +108,7 @@ class TradingBot:
                 # 2. Evaluate strategies in batches with timeout
                 try:
                     all_proposals = await asyncio.wait_for(
-                        evaluate_symbols_strategies_batch(self.api, active_symbols, self.strategies, self.strategies),
+                        evaluate_symbols_strategies_batch(active_symbols, self.api, self.strategies, self.strategies),
                         timeout=30.0
                     )
                 except asyncio.TimeoutError:
@@ -139,21 +142,13 @@ class TradingBot:
                         traded_symbols_this_cycle,
                         self.trade_cache,
                         proposal['data'],
-                        self._log
+                        self._log,
+                        self.user_id
                     )
                     if contract:
                         self.open_contracts.append(contract)
                         self.trade_cache[symbol] = datetime.datetime.now()
-                        logging_utils.log_trade(
-                            timestamp=datetime.datetime.now(),
-                            symbol=symbol,
-                            strategy=str(proposal['strategy_ids']),
-                            type='buy',
-                            entry_price=contract['buy_price'],
-                            status='Open',
-                            pnl=0.0,
-                            user_id=1 # This needs to be dynamic in a multi-user context
-                        )
+
 
                 # 4. Monitor open contracts
                 await monitor_open_contracts(self.api, self.open_contracts, self._log, self.update_balance_on_close)
@@ -212,17 +207,32 @@ class TradingBot:
                         error_message = contract_details_response['error']['message']
                         if "ContractNotFound" in error_message or "InvalidContract" in error_message:
                             await self._log(f"ℹ️ Contract {contract_id} for {symbol} is no longer active. Removing from monitoring.")
+                            
+                            # Calculate PnL and exit price
                             final_payout = contract.get('sell_price', 0)
-                            outcome = "closed"
-                            outcome_message = f"Contract {contract_id} for {symbol} closed. Final Payout: {final_payout:.2f}"
-                            logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, outcome, buy_price, final_payout, outcome_message)
+                            buy_price = contract.get('buy_price', 0)
+                            pnl = final_payout - buy_price
+                            
+                            # Update the trade log entry
+                            update_trade(
+                                trade_id=contract['trade_log_id'],
+                                exit_price=final_payout,
+                                pnl=pnl,
+                                status='closed' if pnl >= 0 else 'loss',
+                                message=f"Contract {contract_id} for {symbol} closed. Final Payout: {final_payout:.2f}, PnL: {pnl:.2f}"
+                            )
                             
                             if isinstance(strategies_used, list):
                                 for strategy_id in strategies_used:
-                                    logging_utils.update_strategy_performance(strategy_id, "loss") 
+                                    # This needs to be handled by main.py queries, not directly here
+                                    pass 
                         else:
                             log_message = f"Error getting contract details for {contract_id}: {error_message}"
-                            logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, 'error', buy_price, payout, log_message)
+                            update_trade(
+                                trade_id=contract['trade_log_id'],
+                                status='error',
+                                message=log_message
+                            )
                             await self._log(f"❌ {log_message}")
                         continue
 
@@ -235,16 +245,34 @@ class TradingBot:
                     if contract_info.get('is_sell_available'):
                         if profit_percentage <= -config.STOP_LOSS_PERCENT:
                             log_message = f"Stop-loss triggered for {symbol} at {profit_percentage:.2f}%. Selling contract {contract_id}."
-                            logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, 'stop_loss', buy_price, payout, log_message)
                             await self._log(f"🛡️ {log_message}")
-                            await sell_contract(self.api, contract_id)
+                            sell_response = await sell_contract(self.api, contract_id, self._log)
+                            if sell_response:
+                                sell_price = sell_response['sell']['sold_for']
+                                pnl = sell_price - buy_price
+                                update_trade(
+                                    trade_id=contract['trade_log_id'],
+                                    exit_price=sell_price,
+                                    pnl=pnl,
+                                    status='loss',
+                                    message=log_message
+                                )
                             continue
                         
                         if profit_percentage >= config.TAKE_PROFIT_PERCENT:
                             log_message = f"Take-profit triggered for {symbol} at {profit_percentage:.2f}%. Selling contract {contract_id}."
-                            logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, 'take_profit', buy_price, payout, log_message)
                             await self._log(f"🎯 {log_message}")
-                            await sell_contract(self.api, contract_id)
+                            sell_response = await sell_contract(self.api, contract_id, self._log)
+                            if sell_response:
+                                sell_price = sell_response['sell']['sold_for']
+                                pnl = sell_price - buy_price
+                                update_trade(
+                                    trade_id=contract['trade_log_id'],
+                                    exit_price=sell_price,
+                                    pnl=pnl,
+                                    status='win',
+                                    message=log_message
+                                )
                             continue
 
                     outcome_message = f"Current price: {current_price}. "
@@ -253,7 +281,7 @@ class TradingBot:
                     else:
                         outcome_message += "Currently unprofitable."
                     
-                    logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, 'monitor', buy_price, payout, outcome_message)
+                    # No need to log 'monitor' action to DB, as it's not a final state
                     await self._log(f"   - Current price: {current_price:.5f}. Status: {'Profitable' if profit_percentage > 0 else 'Unprofitable'}.")
 
                     latest_rsi = contract.get('latest_rsi')
@@ -266,56 +294,110 @@ class TradingBot:
                     if latest_engulfing != 0:
                         if contract_type == 'CALL' and latest_engulfing == -100:
                             log_message = f"Bearish Engulfing pattern detected for {symbol}. Initiating early exit for contract {contract_id}."
-                            logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, 'early_exit_signal', buy_price, payout, log_message)
                             await self._log(f"⚠️ {log_message}")
                             if contract_info.get('is_sell_available'):
-                                await sell_contract(self.api, contract_id)
+                                sell_response = await sell_contract(self.api, contract_id, self._log)
+                                if sell_response:
+                                    sell_price = sell_response['sell']['sold_for']
+                                    pnl = sell_price - buy_price
+                                    update_trade(
+                                        trade_id=contract['trade_log_id'],
+                                        exit_price=sell_price,
+                                        pnl=pnl,
+                                        status='closed', # Determine win/loss based on pnl
+                                        message=log_message
+                                    )
                                 continue
                         elif contract_type == 'PUT' and latest_engulfing == 100:
                             log_message = f"Bullish Engulfing pattern detected for {symbol}. Initiating early exit for contract {contract_id}."
-                            logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, 'early_exit_signal', buy_price, payout, log_message)
                             await self._log(f"⚠️ {log_message}")
                             if contract_info.get('is_sell_available'):
-                                await sell_contract(self.api, contract_id)
+                                sell_response = await sell_contract(self.api, contract_id, self._log)
+                                if sell_response:
+                                    sell_price = sell_response['sell']['sold_for']
+                                    pnl = sell_price - buy_price
+                                    update_trade(
+                                        trade_id=contract['trade_log_id'],
+                                        exit_price=sell_price,
+                                        pnl=pnl,
+                                        status='closed', # Determine win/loss based on pnl
+                                        message=log_message
+                                    )
                                 continue
 
                     if contract_type == 'CALL' and latest_rsi > 70:
                         log_message = f"RSI overbought for {symbol}. Initiating early exit for contract {contract_id}."
-                        logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, 'early_exit_signal', buy_price, payout, log_message)
                         await self._log(f"⚠️ {log_message}")
                         contract_details_response = await self.api.send({'proposal_open_contract': 1, 'contract_id': contract_id})
                         if contract_details_response.get('error'):
                             log_message = f"Error getting contract details for resale check for {contract_id}: {contract_details_response['error']['message']}"
-                            logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, 'error', buy_price, payout, log_message)
+                            update_trade(
+                                trade_id=contract['trade_log_id'],
+                                status='error',
+                                message=log_message
+                            )
                             await self._log(f"❌ {log_message}")
                         else:
                             contract_info = contract_details_response['proposal_open_contract']
                             if contract_info.get('is_sell_available'):
-                                await sell_contract(self.api, contract_id)
+                                sell_response = await sell_contract(self.api, contract_id, self._log)
+                                if sell_response:
+                                    sell_price = sell_response['sell']['sold_for']
+                                    pnl = sell_price - buy_price
+                                    update_trade(
+                                        trade_id=contract['trade_log_id'],
+                                        exit_price=sell_price,
+                                        pnl=pnl,
+                                        status='closed', # Determine win/loss based on pnl
+                                        message=log_message
+                                    )
                             else:
                                 await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
-                                logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, 'info', buy_price, payout, f"Resale not available for contract {contract_id}.")
+                                update_trade(
+                                    trade_id=contract['trade_log_id'],
+                                    message=f"Resale not available for contract {contract_id}. Continuing to monitor."
+                                )
                     elif contract_type == 'PUT' and latest_rsi < 30:
                         log_message = f"RSI oversold for {symbol}. Initiating early exit for contract {contract_id}."
-                        logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, 'early_exit_signal', buy_price, payout, log_message)
                         await self._log(f"⚠️ {log_message}")
                         contract_details_response = await self.api.send({'proposal_open_contract': 1, 'contract_id': contract_id})
                         if contract_details_response.get('error'):
                             log_message = f"Error getting contract details for resale check for {contract_id}: {contract_details_response['error']['message']}"
-                            logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, 'error', buy_price, payout, log_message)
+                            update_trade(
+                                trade_id=contract['trade_log_id'],
+                                status='error',
+                                message=log_message
+                            )
                             await self._log(f"❌ {log_message}")
                         else:
                             contract_info = contract_details_response['proposal_open_contract']
                             if contract_info.get('is_sell_available'):
-                                await sell_contract(self.api, contract_id)
+                                sell_response = await sell_contract(self.api, contract_id, self._log)
+                                if sell_response:
+                                    sell_price = sell_response['sell']['sold_for']
+                                    pnl = sell_price - buy_price
+                                    update_trade(
+                                        trade_id=contract['trade_log_id'],
+                                        exit_price=sell_price,
+                                        pnl=pnl,
+                                        status='closed', # Determine win/loss based on pnl
+                                        message=log_message
+                                    )
                             else:
                                 await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
-                                logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, 'info', buy_price, payout, f"Resale not available for contract {contract_id}.")
+                                update_trade(
+                                    trade_id=contract['trade_log_id'],
+                                    message=f"Resale not available for contract {contract_id}. Continuing to monitor."
+                                )
                 except Exception as e:
-                    logging_utils.log_trade(datetime.datetime.now(), symbol, strategies_used_str, 'error', buy_price, payout, f"Unhandled exception processing contract {contract_id}: {e}")
-                    await self._log(f"❌ Unhandled exception processing contract {contract_id}: {e}")
+                    log_message = f"Unhandled exception processing contract {contract_id}: {e}"
+                    update_trade(
+                        trade_id=contract['trade_log_id'],
+                        status='error',
+                        message=log_message
+                    )
+                    await self._log(f"❌ {log_message}")
             
             self.open_contracts[:] = updated_open_contracts
         except Exception as e:
-            logging_utils.log_trade(datetime.datetime.now(), None, None, 'error', None, None, f"Error during contract monitoring: {e}")
             await self._log(f"❌ Error during contract monitoring: {e}")

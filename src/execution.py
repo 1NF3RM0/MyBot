@@ -1,13 +1,12 @@
-import asyncio
-from deriv_api import DerivAPI
-from deriv_api.errors import ResponseError
-from src import logging_utils
+from src.logging_utils import log_new_trade
 import datetime
 import time
 import json
 from src import config
 from src.risk import calculate_lot_size
-from .utils import retry_async
+from deriv_api import DerivAPI
+from deriv_api.errors import ResponseError
+from src.utils import retry_async
 
 @retry_async
 async def sell_contract(api, contract_id, log_func):
@@ -18,18 +17,18 @@ async def sell_contract(api, contract_id, log_func):
             error_message = sell_response['error']['message']
             if "Resale of this contract is not offered" in error_message:
                 await log_func(f"⚠️ Early exit for contract {contract_id} not offered: {error_message}. Continuing to monitor.")
-                return False # Indicate that the sell was not successful, but not a critical error
+                return None # Indicate that the sell was not successful, but not a critical error
             else:
                 await log_func(f"❌ Error selling contract {contract_id}: {error_message}")
-                return False
+                return None
         await log_func(f"✅ Successfully sold contract {contract_id}.")
-        return True
+        return sell_response
     except Exception as e:
         await log_func(f"❌ Exception while selling contract {contract_id}: {e}")
-        return False
+        return None
 
 @retry_async
-async def execute_trade(api, symbol, confirmed_strategies, balance_response, trading_parameters, open_contracts, traded_symbols_this_cycle, trade_cache, data, log_func):
+async def execute_trade(api, symbol, confirmed_strategies, balance_response, trading_parameters, open_contracts, traded_symbols_this_cycle, trade_cache, data, log_func, user_id: int):
     """Executes a trade based on confirmed strategies."""
     strategy_ids_tuple = tuple(sorted([s.id for s in confirmed_strategies]))
     try:
@@ -40,43 +39,48 @@ async def execute_trade(api, symbol, confirmed_strategies, balance_response, tra
             last_trade_time, last_trade_conditions = trade_cache[(symbol, strategy_ids_tuple)]
             if time.time() - last_trade_time < trading_parameters['cooldown_period']:
                 log_message = f"Cooldown period for {symbol} - {[s.name for s in confirmed_strategies]} has not passed yet. Skipping trade."
-                logging_utils.log_trade(datetime.datetime.now(), symbol, str(strategy_ids_tuple), 'info', None, None, log_message)
                 await log_func(f"❌ Trade for {symbol} skipped: Cooldown period for {[s.name for s in confirmed_strategies]} has not passed yet.")
                 return
 
         # Check if symbol already traded this cycle
         if symbol in traded_symbols_this_cycle:
             log_message = f"Symbol {symbol} already traded this cycle. Skipping trade."
-            logging_utils.log_trade(datetime.datetime.now(), symbol, str(strategy_ids_tuple), 'info', None, None, log_message)
             await log_func(f"❌ Trade for {symbol} skipped: Already traded this cycle.")
             return
         
         # Calculate lot size
         num_lots, amount_per_lot = calculate_lot_size(balance_response['balance']['balance'], trading_parameters['risk_percentage'])
 
-        logging_utils.log_trade(datetime.datetime.now(), symbol, str(strategy_ids_tuple), 'proposal', None, None, None)
         await log_func(f"✅ Strategy {', '.join([s.name for s in confirmed_strategies])} triggered a trade for {symbol}. Proposing {num_lots} contracts...")
         
+        # Determine contract type based on signal
+        contract_type = 'PUT' # Default to PUT
+        for strategy_obj in confirmed_strategies:
+            # Assuming strategy_obj.func returns (signal, confidence)
+            # and we need to infer the signal type from the strategy's intent
+            # This is a simplification; a more robust solution would pass signal type explicitly
+            if 'buy' in strategy_obj.name.lower() or 'call' in strategy_obj.name.lower(): # Heuristic for now
+                contract_type = 'CALL'
+                break
+
         # Propose a contract
         for i in range(num_lots):
             proposal = await api.proposal({
                 'proposal': 1,
                 'symbol': symbol,
-                'contract_type': 'CALL',
-                'duration': 4,
-                'duration_unit': 'h',
+                'contract_type': contract_type,
+                'duration': 4, # Reverted to 4
+                'duration_unit': 'h', # Reverted to 'h'
                 'currency': 'USD',
                 'amount': amount_per_lot,
                 'basis': 'stake'
             })
         
             if proposal.get('error'):
-                logging_utils.log_trade(datetime.datetime.now(), symbol, str(strategy_ids_tuple), 'error', None, None, proposal['error']['message'])
                 await log_func(f"❌ Error getting proposal for {symbol}: {proposal['error']['message']}")
                 continue
         
             if proposal['proposal']['ask_price'] > config.MAX_ASK_PRICE or proposal['proposal']['payout'] < config.MIN_PAYOUT:
-                logging_utils.log_trade(datetime.datetime.now(), symbol, str(strategy_ids_tuple), 'reject', proposal['proposal']['ask_price'], proposal['proposal']['payout'], None)
                 await log_func(f"❌ Proposal for {symbol} rejected: Price {proposal['proposal']['ask_price']:.2f}, Payout {proposal['proposal']['payout']:.2f} (criteria not met).")
                 continue
             
@@ -86,15 +90,26 @@ async def execute_trade(api, symbol, confirmed_strategies, balance_response, tra
             })
     
             if buy.get('error'):
-                logging_utils.log_trade(datetime.datetime.now(), symbol, str(strategy_ids_tuple), 'error', proposal['proposal']['ask_price'], proposal['proposal']['payout'], buy['error']['message'])
                 await log_func(f"❌ Error buying contract for {symbol}: {buy['error']['message']}")
             else:
                 strategy_ids = [s.id for s in confirmed_strategies]
-                logging_utils.log_trade(datetime.datetime.now(), symbol, str(strategy_ids_tuple), 'buy', buy['buy']['buy_price'], buy['buy']['payout'], None)
+                
+                # Log new trade to the database
+                new_trade_log_entry = log_new_trade(
+                    user_id=user_id,
+                    symbol=symbol,
+                    strategy=str(strategy_ids_tuple),
+                    trade_type='buy',
+                    entry_price=buy['buy']['buy_price'],
+                    status='Open',
+                    message=f"Successfully bought contract {buy['buy']['contract_id']}. Payout: {buy['buy']['payout']:.2f}"
+                )
+                
                 await log_func(f"✅ Successfully bought contract {buy['buy']['contract_id']} for {symbol}. Payout: {buy['buy']['payout']:.2f}")
                 
                 contract_info = buy['buy']
                 contract_info['strategy_ids'] = strategy_ids
+                contract_info['trade_log_id'] = new_trade_log_entry.id # Store the trade_log_id
                 
                 latest_rsi = float(data.iloc[-1]['RSI'])
                 contract_info['latest_rsi'] = latest_rsi
@@ -109,9 +124,7 @@ async def execute_trade(api, symbol, confirmed_strategies, balance_response, tra
                 trade_cache[(symbol, strategy_ids_tuple)] = (time.time(), (data.iloc[-1]['SMA_10'], data.iloc[-1]['RSI']))
     except ResponseError as e:
         log_message = f"Error processing trade for {symbol}: {e}"
-        logging_utils.log_trade(datetime.datetime.now(), symbol, str(strategy_ids_tuple), 'error', None, None, log_message)
         await log_func(f"❌ {log_message}")
     except Exception as e:
         log_message = f"An unexpected error occurred during trade execution for {symbol}: {e}"
-        logging_utils.log_trade(datetime.datetime.now(), symbol, str(strategy_ids_tuple), 'error', None, None, log_message)
         await log_func(f"❌ {log_message}")

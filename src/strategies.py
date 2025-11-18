@@ -1,31 +1,30 @@
 import asyncio
 import pandas as pd
 import datetime
+import ta # Added this import
 from src import logging_utils
 from src.utils import retry_async, classify_market_condition
 from src.indicators import get_indicators # get_indicators is needed for evaluate_symbol_strategies
 from src.ml_strategy import predict_signal # Import ML prediction function
 
 @retry_async
-async def evaluate_golden_cross(candles):
+async def evaluate_golden_cross(symbol, data, confidence):
     """Evaluates the Golden Cross strategy."""
-    if len(candles) < 25: return None
-    df = pd.DataFrame(candles)
-    sma_short = ta.trend.SMAIndicator(df['close'], window=10).sma_series()
-    sma_long = ta.trend.SMAIndicator(df['close'], window=25).sma_series()
+    if len(data) < 25: return False, 0.0
+    sma_short = ta.trend.SMAIndicator(data['close'], window=10, fillna=True).sma_indicator()
+    sma_long = ta.trend.SMAIndicator(data['close'], window=25, fillna=True).sma_indicator()
     if sma_short.iloc[-2] < sma_long.iloc[-2] and sma_short.iloc[-1] > sma_long.iloc[-1]:
-        return {'signal': 'buy', 'confidence': 0.7}
-    return None
+        return True, 0.7
+    return False, 0.0
 
 @retry_async
-async def evaluate_rsi_dip(candles):
+async def evaluate_rsi_dip(symbol, data, confidence):
     """Evaluates the RSI Dip strategy."""
-    if len(candles) < 14: return None
-    df = pd.DataFrame(candles)
-    rsi = ta.momentum.RSIIndicator(df['close']).rsi()
+    if len(data) < 14: return False, 0.0
+    rsi = ta.momentum.RSIIndicator(data['close'], window=14, fillna=True).rsi()
     if rsi.iloc[-1] < 45:
-        return {'signal': 'buy', 'confidence': 0.6}
-    return None
+        return True, 0.6
+    return False, 0.0
 
 async def evaluate_macd_crossover(symbol, data, confidence):
     """Evaluates the MACD crossover strategy."""
@@ -87,23 +86,23 @@ def _get_strategies_for_condition(market_condition, active_strategies, all_strat
     """Helper function to select strategies based on market condition."""
     strategies = []
     if market_condition == "trending":
-        for s in active_strategies:
-            if s.name in ["Golden Cross", "MACD Crossover", "Awesome Oscillator"]:
-                strategies.append(s)
+        for s_id, s_obj in active_strategies.items():
+            if s_obj.name in ["Golden Cross", "MACD Crossover", "Awesome Oscillator"]:
+                strategies.append(s_obj)
     elif market_condition == "ranging":
-        for s in active_strategies:
-            if s.name in ["RSI Dip", "Bollinger Breakout"]:
-                strategies.append(s)
+        for s_id, s_obj in active_strategies.items():
+            if s_obj.name in ["RSI Dip", "Bollinger Breakout"]:
+                strategies.append(s_obj)
     elif market_condition == "volatile":
-        for s in active_strategies:
-            if s.name == "Bollinger Breakout":
-                strategies.append(s)
+        for s_id, s_obj in active_strategies.items():
+            if s_obj.name == "Bollinger Breakout":
+                strategies.append(s_obj)
     
     # Always add ML strategy if it's active, unless it's a fallback call and ML is not explicitly for this condition
     if not is_fallback:
-        for s in active_strategies:
-            if s.name == "ML Prediction":
-                strategies.append(s)
+        for s_id, s_obj in active_strategies.items():
+            if s_obj.name == "ML Prediction":
+                strategies.append(s_obj)
     
     return strategies
 

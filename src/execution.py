@@ -72,40 +72,42 @@ async def execute_trade(api, symbol, confirmed_strategies, balance_response, tra
         target_duration_hours = 4
         target_duration_minutes = target_duration_hours * 60
 
-        # Prioritize hours, then minutes, then days
-        for unit_preference in ['h', 'm', 'd']:
+        # Prioritize days, then hours, then minutes
+        for unit_preference in ['d', 'h', 'm']:
             if unit_preference in valid_durations:
                 for duration_range in valid_durations[unit_preference]:
                     min_val = duration_range['min']
                     max_val = duration_range['max']
 
-                    if unit_preference == 'h':
-                        # Try to find 4 hours within the range
+                    if unit_preference == 'd':
+                        # Try to find 1 day within the range, otherwise pick the largest valid day duration
+                        if min_val <= 1 <= max_val:
+                            selected_duration = 1
+                            selected_duration_unit = 'd'
+                            break
+                        elif max_val >= 1: # If 1 day is not available, pick the largest valid day duration
+                            selected_duration = max_val
+                            selected_duration_unit = 'd'
+                            break
+                    elif unit_preference == 'h':
+                        # Try to find 4 hours within the range, otherwise pick the largest valid hour duration
                         if min_val <= target_duration_hours <= max_val:
                             selected_duration = target_duration_hours
                             selected_duration_unit = 'h'
                             break
-                        # If 4 hours not in range, pick the smallest valid hour duration >= 1 hour
-                        elif min_val >= 1:
-                            selected_duration = min_val
+                        elif max_val >= 1: # If 4 hours not in range, pick the largest valid hour duration
+                            selected_duration = max_val
                             selected_duration_unit = 'h'
                             break
                     elif unit_preference == 'm':
-                        # Try to find 240 minutes within the range
+                        # Try to find 240 minutes within the range, otherwise pick the largest valid minute duration
                         if min_val <= target_duration_minutes <= max_val:
                             selected_duration = target_duration_minutes
                             selected_duration_unit = 'm'
                             break
-                        # If 240 minutes not in range, pick the smallest valid minute duration >= 1 minute
-                        elif min_val >= 1:
-                            selected_duration = min_val
+                        elif max_val >= 1: # If 240 minutes not in range, pick the largest valid minute duration
+                            selected_duration = max_val
                             selected_duration_unit = 'm'
-                            break
-                    elif unit_preference == 'd':
-                        # For days, just pick the smallest valid day duration >= 1 day
-                        if min_val >= 1:
-                            selected_duration = min_val
-                            selected_duration_unit = 'd'
                             break
                 if selected_duration:
                     break # Break from unit_preference loop if a duration is found

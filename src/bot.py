@@ -9,7 +9,7 @@ from src.logging_utils import log_new_trade, update_trade
 from src.utils import get_active_symbols, retry_async
 from src.strategies import evaluate_golden_cross, evaluate_rsi_dip, evaluate_macd_crossover, evaluate_bollinger_breakout, evaluate_awesome_oscillator, evaluate_ml_prediction, evaluate_symbols_strategies_batch
 from src.execution import sell_contract, execute_trade
-from src.monitor import monitor_open_contracts
+
 from src.strategy_definitions import BASE_STRATEGIES
 
 class TradingBot:
@@ -150,8 +150,8 @@ class TradingBot:
                         self.trade_cache[symbol] = datetime.datetime.now()
 
 
-                # 4. Monitor open contracts
-                await monitor_open_contracts(self.api, self.open_contracts, self._log, self.update_balance_on_close)
+                # 4. Monitor open contracts using the instance method
+                await self.monitor_open_contracts()
                 
                 await self._log(f"Cycle finished. Waiting {config.LOOP_DELAY} seconds.")
                 await asyncio.sleep(config.LOOP_DELAY)
@@ -193,8 +193,7 @@ class TradingBot:
             for contract in list(self.open_contracts):
                 contract_id = contract['contract_id']
                 symbol = contract['shortcode'].split('_')[1]
-                buy_price = contract['buy_price']
-                payout = contract['payout']
+
                 contract_type = contract['shortcode'].split('_')[0]
                 
                 strategies_used = contract.get('strategy_ids', "Unknown")
@@ -218,7 +217,7 @@ class TradingBot:
                                 trade_id=contract['trade_log_id'],
                                 exit_price=final_payout,
                                 pnl=pnl,
-                                status='closed' if pnl >= 0 else 'loss',
+                                status='loss',
                                 message=f"Contract {contract_id} for {symbol} closed. Final Payout: {final_payout:.2f}, PnL: {pnl:.2f}"
                             )
                             
@@ -240,10 +239,39 @@ class TradingBot:
                     profit_percentage = contract_info.get('profit_percentage', 0)
                     current_price = contract_info.get('current_spot', 0)
 
+                    # Check if the contract has expired/settled
+                    if contract_info.get('is_sold') or contract_info.get('status') in ['won', 'lost', 'settled']:
+                        final_payout = contract_info.get('sell_price', contract_info.get('payout', 0))
+                        pnl = final_payout - buy_price
+                        status = 'win' if pnl > 0 else ('loss' if pnl < 0 else 'draw')
+                        
+                        update_trade(
+                            trade_id=contract['trade_log_id'],
+                            exit_price=final_payout,
+                            pnl=pnl,
+                            status=status,
+                            message=f"Contract {contract_id} for {symbol} settled. Final Payout: {final_payout:.2f}, PnL: {pnl:.2f}"
+                        )
+                        await self._log(f"✅ Contract {contract_id} for {symbol} settled. PnL: {pnl:.2f}, Status: {status.upper()}")
+                        # Update balance if it was a successful sell (is_sold is true)
+                        if contract_info.get('is_sold'):
+                            # The sell_response from sell_contract has 'balance_after'.
+                            # For naturally settled contracts, we need to fetch the balance again or calculate.
+                            # For simplicity, let's assume the balance is updated by the API automatically
+                            # and we just need to refresh it.
+                            try:
+                                balance_response = await self.api.balance()
+                                if balance_response and not balance_response.get('error'):
+                                    self.balance = balance_response['balance']['balance']
+                                    await self._log(f"Balance refreshed. New account balance: {self.balance} {self.currency}")
+                            except Exception as bal_e:
+                                await self._log(f"Error refreshing balance after contract settlement: {bal_e}")
+                        continue # Move to the next contract, as this one is closed
+
                     updated_open_contracts.append(contract)
 
                     if contract_info.get('is_sell_available'):
-                        if profit_percentage <= -config.STOP_LOSS_PERCENT:
+                        if profit_percentage <= -self.trading_parameters['stop_loss_percent']:
                             log_message = f"Stop-loss triggered for {symbol} at {profit_percentage:.2f}%. Selling contract {contract_id}."
                             await self._log(f"🛡️ {log_message}")
                             sell_response = await sell_contract(self.api, contract_id, self._log)
@@ -257,9 +285,10 @@ class TradingBot:
                                     status='loss',
                                     message=log_message
                                 )
+                                await self.update_balance_on_close(sell_response)
                             continue
                         
-                        if profit_percentage >= config.TAKE_PROFIT_PERCENT:
+                        if profit_percentage >= self.trading_parameters['take_profit_percent']:
                             log_message = f"Take-profit triggered for {symbol} at {profit_percentage:.2f}%. Selling contract {contract_id}."
                             await self._log(f"🎯 {log_message}")
                             sell_response = await sell_contract(self.api, contract_id, self._log)
@@ -273,6 +302,7 @@ class TradingBot:
                                     status='win',
                                     message=log_message
                                 )
+                                await self.update_balance_on_close(sell_response)
                             continue
 
                     outcome_message = f"Current price: {current_price}. "
@@ -293,21 +323,22 @@ class TradingBot:
 
                     if latest_engulfing != 0:
                         if contract_type == 'CALL' and latest_engulfing == -100:
-                            log_message = f"Bearish Engulfing pattern detected for {symbol}. Initiating early exit for contract {contract_id}."
-                            await self._log(f"⚠️ {log_message}")
-                            if contract_info.get('is_sell_available'):
-                                sell_response = await sell_contract(self.api, contract_id, self._log)
-                                if sell_response:
-                                    sell_price = sell_response['sell']['sold_for']
-                                    pnl = sell_price - buy_price
-                                    update_trade(
-                                        trade_id=contract['trade_log_id'],
-                                        exit_price=sell_price,
-                                        pnl=pnl,
-                                        status='closed', # Determine win/loss based on pnl
-                                        message=log_message
-                                    )
-                                continue
+                                                                log_message = f"Bearish Engulfing pattern detected for {symbol}. Initiating early exit for contract {contract_id}."
+                                                                await self._log(f"⚠️ {log_message}")
+                                                                if contract_info.get('is_sell_available'):
+                                                                    sell_response = await sell_contract(self.api, contract_id, self._log)
+                                                                    if sell_response:
+                                                                        sell_price = sell_response['sell']['sold_for']
+                                                                        pnl = sell_price - buy_price
+                                                                        update_trade(
+                                                                            trade_id=contract['trade_log_id'],
+                                                                            exit_price=sell_price,
+                                                                            pnl=pnl,
+                                                                            status='win' if pnl > 0 else 'loss',
+                                                                            message=log_message
+                                                                        )
+                                                                        await self.update_balance_on_close(sell_response)
+                                                                continue
                         elif contract_type == 'PUT' and latest_engulfing == 100:
                             log_message = f"Bullish Engulfing pattern detected for {symbol}. Initiating early exit for contract {contract_id}."
                             await self._log(f"⚠️ {log_message}")
@@ -348,9 +379,10 @@ class TradingBot:
                                         trade_id=contract['trade_log_id'],
                                         exit_price=sell_price,
                                         pnl=pnl,
-                                        status='closed', # Determine win/loss based on pnl
+                                        status='win' if pnl > 0 else 'loss',
                                         message=log_message
                                     )
+                                    await self.update_balance_on_close(sell_response)
                             else:
                                 await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
                                 update_trade(
@@ -380,9 +412,10 @@ class TradingBot:
                                         trade_id=contract['trade_log_id'],
                                         exit_price=sell_price,
                                         pnl=pnl,
-                                        status='closed', # Determine win/loss based on pnl
+                                        status='win' if pnl > 0 else 'loss',
                                         message=log_message
                                     )
+                                    await self.update_balance_on_close(sell_response)
                             else:
                                 await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
                                 update_trade(

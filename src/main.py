@@ -230,6 +230,26 @@ async def get_account_info(current_user: schemas.User = Depends(auth.get_current
         return {"balance": bot.balance, "currency": bot.currency}
     return {"balance": None, "currency": None}
 
+@app.get("/bot/open_contracts_deriv")
+async def get_open_contracts_from_deriv(current_user: schemas.User = Depends(auth.get_current_active_user)):
+    user_id = current_user.id
+    if user_id not in bot_instances or not bot_instances[user_id]._is_running:
+        raise HTTPException(status_code=400, detail="Bot is not running for this user.")
+    
+    bot = bot_instances[user_id]
+    try:
+        portfolio_response = await bot.api.portfolio()
+        if portfolio_response.get('error'):
+            raise HTTPException(status_code=500, detail=portfolio_response['error']['message'])
+        
+        contracts = portfolio_response.get('portfolio', {}).get('contracts', [])
+        
+        # You might want to filter or format these contracts before returning
+        # For now, returning them as is
+        return contracts
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch open contracts from Deriv: {e}")
+
 @app.get("/bot/performance")
 async def get_performance_data(current_user: schemas.User = Depends(auth.get_current_active_user), db: Session = Depends(database.get_db)):
     trades = db.query(database.TradeLog).filter(

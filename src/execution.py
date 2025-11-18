@@ -6,7 +6,7 @@ from src import config
 from src.risk import calculate_lot_size
 from deriv_api import DerivAPI
 from deriv_api.errors import ResponseError
-from src.utils import retry_async
+from src.utils import retry_async, get_valid_durations
 
 @retry_async
 async def sell_contract(api, contract_id, log_func):
@@ -63,14 +63,65 @@ async def execute_trade(api, symbol, confirmed_strategies, balance_response, tra
                 contract_type = 'CALL'
                 break
 
+        # Dynamically determine duration
+        valid_durations = await get_valid_durations(api, symbol, contract_type)
+        
+        selected_duration = None
+        selected_duration_unit = None
+
+        target_duration_hours = 4
+        target_duration_minutes = target_duration_hours * 60
+
+        # Prioritize hours, then minutes, then days
+        for unit_preference in ['h', 'm', 'd']:
+            if unit_preference in valid_durations:
+                for duration_range in valid_durations[unit_preference]:
+                    min_val = duration_range['min']
+                    max_val = duration_range['max']
+
+                    if unit_preference == 'h':
+                        # Try to find 4 hours within the range
+                        if min_val <= target_duration_hours <= max_val:
+                            selected_duration = target_duration_hours
+                            selected_duration_unit = 'h'
+                            break
+                        # If 4 hours not in range, pick the smallest valid hour duration >= 1 hour
+                        elif min_val >= 1:
+                            selected_duration = min_val
+                            selected_duration_unit = 'h'
+                            break
+                    elif unit_preference == 'm':
+                        # Try to find 240 minutes within the range
+                        if min_val <= target_duration_minutes <= max_val:
+                            selected_duration = target_duration_minutes
+                            selected_duration_unit = 'm'
+                            break
+                        # If 240 minutes not in range, pick the smallest valid minute duration >= 1 minute
+                        elif min_val >= 1:
+                            selected_duration = min_val
+                            selected_duration_unit = 'm'
+                            break
+                    elif unit_preference == 'd':
+                        # For days, just pick the smallest valid day duration >= 1 day
+                        if min_val >= 1:
+                            selected_duration = min_val
+                            selected_duration_unit = 'd'
+                            break
+                if selected_duration:
+                    break # Break from unit_preference loop if a duration is found
+
+        if not selected_duration:
+            await log_func(f"❌ No suitable duration found for {symbol} with contract type {contract_type}. Skipping trade. Valid durations: {valid_durations}")
+            return
+
         # Propose a contract
         for i in range(num_lots):
             proposal = await api.proposal({
                 'proposal': 1,
                 'symbol': symbol,
                 'contract_type': contract_type,
-                'duration': 4, # Reverted to 4
-                'duration_unit': 'h', # Reverted to 'h'
+                'duration': selected_duration,
+                'duration_unit': selected_duration_unit,
                 'currency': 'USD',
                 'amount': amount_per_lot,
                 'basis': 'stake'

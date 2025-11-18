@@ -51,6 +51,18 @@ async def execute_trade(api, symbol, confirmed_strategies, balance_response, tra
         # Calculate lot size
         num_lots, amount_per_lot = calculate_lot_size(balance_response['balance']['balance'], trading_parameters['risk_percentage'])
 
+        # Adjust num_lots based on MAX_OPEN_CONTRACTS
+        remaining_capacity = config.MAX_OPEN_CONTRACTS - len(open_contracts)
+        if remaining_capacity <= 0:
+            await log_func(f"⚠️ Maximum number of open contracts ({config.MAX_OPEN_CONTRACTS}) already reached. Skipping new trade for {symbol}.")
+            return
+        
+        num_lots = min(num_lots, remaining_capacity)
+        
+        if num_lots == 0:
+            await log_func(f"⚠️ Not enough capacity to open new contracts. Skipping new trade for {symbol}.")
+            return
+
         await log_func(f"✅ Strategy {', '.join([s.name for s in confirmed_strategies])} triggered a trade for {symbol}. Proposing {num_lots} contracts...")
         
         # Determine contract type based on signal
@@ -116,8 +128,13 @@ async def execute_trade(api, symbol, confirmed_strategies, balance_response, tra
             await log_func(f"❌ No suitable duration found for {symbol} with contract type {contract_type}. Skipping trade. Valid durations: {valid_durations}")
             return
 
-        # Propose a contract
+        # Propose and buy contracts
         for i in range(num_lots):
+            # Re-check capacity before each buy attempt within the num_lots loop
+            if len(open_contracts) >= config.MAX_OPEN_CONTRACTS:
+                await log_func(f"⚠️ Maximum number of open contracts ({config.MAX_OPEN_CONTRACTS}) reached during multi-lot execution. Stopping further buys for {symbol}.")
+                break
+
             proposal = await api.proposal({
                 'proposal': 1,
                 'symbol': symbol,

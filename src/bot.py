@@ -94,6 +94,47 @@ class TradingBot:
             try:
                 await self._log("Starting new trading cycle...")
                 traded_symbols_this_cycle = set()
+
+                # Synchronize open_contracts with Deriv API
+                try:
+                    portfolio_response = await asyncio.wait_for(self.api.portfolio(), timeout=10.0)
+                    if portfolio_response and not portfolio_response.get('error'):
+                        # Filter for contracts that are still open and update self.open_contracts
+                        # This assumes that contracts in portfolio_response['portfolio']['contracts']
+                        # have a 'contract_id' and 'shortcode' similar to what the bot stores.
+                        # We need to be careful not to overwrite bot-specific metadata.
+                        deriv_open_contracts = portfolio_response.get('portfolio', {}).get('contracts', [])
+                        
+                        # Create a mapping of contract_id to existing bot contract info
+                        bot_contract_map = {c['contract_id']: c for c in self.open_contracts}
+                        
+                        new_open_contracts = []
+                        for deriv_contract in deriv_open_contracts:
+                            contract_id = deriv_contract.get('contract_id')
+                            if contract_id in bot_contract_map:
+                                # If the bot is already tracking this contract, update its info
+                                updated_contract = bot_contract_map[contract_id]
+                                updated_contract.update(deriv_contract) # Update with latest Deriv info
+                                new_open_contracts.append(updated_contract)
+                            else:
+                                # If the bot is not tracking this contract, add it (with minimal info)
+                                # This might happen if the bot was restarted or contracts were opened externally
+                                new_open_contracts.append({
+                                    'contract_id': contract_id,
+                                    'shortcode': deriv_contract.get('shortcode'),
+                                    'buy_price': deriv_contract.get('buy_price'),
+                                    'is_resale_offered': deriv_contract.get('is_sell_available', True), # Assume resaleable if not specified
+                                    # Add other relevant fields if necessary for monitoring
+                                })
+                        self.open_contracts = new_open_contracts
+                        await self._log(f"Synchronized with Deriv. Found {len(self.open_contracts)} open contracts on platform.")
+                    else:
+                        error_message = portfolio_response.get('error', {}).get('message', 'Unknown error')
+                        await self._log(f"Error: Failed to fetch portfolio from Deriv: {error_message}")
+                except asyncio.TimeoutError:
+                    await self._log("Error: Timed out while fetching portfolio from Deriv.")
+                except Exception as e:
+                    await self._log(f"An error occurred while fetching portfolio from Deriv: {e}")
                 
                 # 1. Fetch active symbols with timeout
                 try:

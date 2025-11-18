@@ -206,7 +206,10 @@ async def get_metrics(current_user: schemas.User = Depends(auth.get_current_acti
     
     win_rate = (sum(1 for t in closed_trades if t.pnl > 0) / len(closed_trades)) * 100 if closed_trades else 0
 
-    open_trades_count = sum(1 for t in trades if t.status == 'Open')
+    # Get open trades count from the running bot instance
+    open_trades_count = 0
+    if user_id in bot_instances and bot_instances[user_id]._is_running:
+        open_trades_count = len(bot_instances[user_id].open_contracts)
 
     active_strategies_count = len(settings.active_strategies.split(',')) if settings and settings.active_strategies else 0
     

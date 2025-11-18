@@ -120,6 +120,15 @@ class TradingBot:
 
                 if not all_proposals:
                     await self._log("No valid trading signals found in this cycle.")
+                    
+                # Check if the maximum number of open contracts has been reached
+                if len(self.open_contracts) >= config.MAX_OPEN_CONTRACTS:
+                    await self._log(f"⚠️ Maximum number of open contracts ({config.MAX_OPEN_CONTRACTS}) reached. Skipping new trades this cycle.")
+                    # Still monitor existing contracts and then continue to the next cycle
+                    await self.monitor_open_contracts()
+                    await self._log(f"Cycle finished. Waiting {config.LOOP_DELAY} seconds.")
+                    await asyncio.sleep(config.LOOP_DELAY)
+                    continue
 
                 # 3. Filter and execute trades
                 for proposal in all_proposals:

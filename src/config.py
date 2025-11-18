@@ -13,3 +13,5 @@ MIN_PAYOUT = 1     # Minimum acceptable payout for a contract
 MIN_COMBINED_CONFIDENCE = 1.5 # Example threshold, can be tuned
 
 LOOP_DELAY = 60 # Delay between trading cycles in seconds
+
+MAX_OPEN_CONTRACTS = 5 # Maximum number of open contracts allowed at any time

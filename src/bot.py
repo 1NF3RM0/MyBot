@@ -291,7 +291,10 @@ class TradingBot:
 
                     # Check if the contract has expired/settled
                     if contract_info.get('is_sold') or contract_info.get('status') in ['won', 'lost', 'settled']:
-                        pnl = final_payout - contract.get('buy_price', 0)
+                        # Determine final payout based on contract info
+                        final_payout = contract_info.get('sell_price', contract_info.get('payout', 0))
+                        buy_price = contract.get('buy_price', 0)
+                        pnl = final_payout - buy_price
                         status = 'win' if pnl > 0 else ('loss' if pnl < 0 else 'draw')
                         
                         update_trade(
@@ -316,6 +319,18 @@ class TradingBot:
                             except Exception as bal_e:
                                 await self._log(f"Error refreshing balance after contract settlement: {bal_e}")
                         continue # Move to the next contract, as this one is closed
+
+                    # Calculate current PnL for open contracts
+                    buy_price = contract.get('buy_price', 0)
+                    current_pnl = current_price - buy_price
+                    
+                    # Update the trade log entry with current PnL
+                    update_trade(
+                        trade_id=contract['trade_log_id'],
+                        current_pnl=current_pnl,
+                        status='Open', # Ensure status remains Open
+                        message=f"Contract {contract_id} for {symbol} is open. Current PnL: {current_pnl:.2f}"
+                    )
 
                     updated_open_contracts.append(contract)
 

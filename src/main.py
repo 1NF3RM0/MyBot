@@ -276,7 +276,15 @@ async def get_recent_trades(current_user: schemas.User = Depends(auth.get_curren
     trades = db.query(database.TradeLog).filter(
         database.TradeLog.user_id == current_user.id
     ).order_by(database.TradeLog.timestamp.desc()).limit(5).all()
-    return trades
+    
+    # Convert to a list of dictionaries to add current_pnl
+    trades_data = []
+    for trade in trades:
+        trade_dict = trade.__dict__
+        trade_dict.pop('_sa_instance_state', None) # Remove SQLAlchemy internal state
+        trades_data.append(trade_dict)
+        
+    return trades_data
 
 @app.get("/tradelog")
 async def get_full_tradelog(
@@ -298,7 +306,15 @@ async def get_full_tradelog(
         query = query.filter(database.TradeLog.status.contains(status))
         
     trades = query.order_by(database.TradeLog.timestamp.desc()).offset(skip).limit(limit).all()
-    return trades
+    
+    # Convert to a list of dictionaries to include current_pnl
+    trades_data = []
+    for trade in trades:
+        trade_dict = trade.__dict__
+        trade_dict.pop('_sa_instance_state', None) # Remove SQLAlchemy internal state
+        trades_data.append(trade_dict)
+        
+    return trades_data
 
 @app.get("/tradelog/export")
 async def export_tradelog(

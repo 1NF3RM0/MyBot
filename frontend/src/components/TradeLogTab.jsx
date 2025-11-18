@@ -146,7 +146,9 @@ const TradeLogTab = () => {
                   <td>{trade.type}</td>
                   <td>{trade.entry_price ? trade.entry_price.toFixed(5) : 'N/A'}</td>
                   <td>{trade.exit_price ? trade.exit_price.toFixed(5) : 'N/A'}</td>
-                  <td className={trade.pnl >= 0 ? 'text-success' : 'text-danger'}>{trade.pnl ? `$${trade.pnl.toFixed(2)}` : 'N/A'}</td>
+                  <td className={(trade.status === 'Open' ? trade.current_pnl : trade.pnl) >= 0 ? 'text-success' : 'text-danger'}>
+                    {trade.status === 'Open' ? (trade.current_pnl ? `$${trade.current_pnl.toFixed(2)}` : 'N/A') : (trade.pnl ? `$${trade.pnl.toFixed(2)}` : 'N/A')}
+                  </td>
                   <td>{trade.status}</td>
                 </tr>
               ))

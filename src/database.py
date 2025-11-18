@@ -54,6 +54,7 @@ class TradeLog(Base):
     entry_price = Column(Float, nullable=True)
     exit_price = Column(Float, nullable=True)
     pnl = Column(Float, nullable=True)
+    current_pnl = Column(Float, nullable=True) # New column for real-time P/L of open trades
     status = Column(String) # e.g., 'open', 'closed', 'win', 'loss'
     message = Column(String, nullable=True)
     

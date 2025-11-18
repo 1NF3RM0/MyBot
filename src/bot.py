@@ -244,6 +244,15 @@ class TradingBot:
                 contract_id = contract['contract_id']
                 symbol = contract['shortcode'].split('_')[1]
 
+                # Check if trade_log_id exists. If not, this contract was likely added during synchronization
+                # and wasn't initiated by this bot instance, so we can't update the local DB for it.
+                trade_log_id = contract.get('trade_log_id')
+                if trade_log_id is None:
+                    await self._log(f"⚠️ Contract {contract_id} for {symbol} has no 'trade_log_id'. Skipping local database updates for this contract, but continuing to monitor its status on Deriv.")
+                    # We still need to process the contract to see if it's closed on Deriv
+                    # and remove it from open_contracts if it is.
+                    pass # Continue to the rest of the loop to check Deriv status
+
                 contract_type = contract['shortcode'].split('_')[0]
                 
                 strategies_used = contract.get('strategy_ids', "Unknown")
@@ -263,13 +272,14 @@ class TradingBot:
                             pnl = final_payout - buy_price
                             
                             # Update the trade log entry
-                            update_trade(
-                                trade_id=contract['trade_log_id'],
-                                exit_price=final_payout,
-                                pnl=pnl,
-                                status='loss',
-                                message=f"Contract {contract_id} for {symbol} closed. Final Payout: {final_payout:.2f}, PnL: {pnl:.2f}"
-                            )
+                            if trade_log_id:
+                                update_trade(
+                                    trade_id=trade_log_id,
+                                    exit_price=final_payout,
+                                    pnl=pnl,
+                                    status='loss',
+                                    message=f"Contract {contract_id} for {symbol} closed. Final Payout: {final_payout:.2f}, PnL: {pnl:.2f}"
+                                )
                             
                             if isinstance(strategies_used, list):
                                 for strategy_id in strategies_used:
@@ -277,11 +287,12 @@ class TradingBot:
                                     pass 
                         else:
                             log_message = f"Error getting contract details for {contract_id}: {error_message}"
-                            update_trade(
-                                trade_id=contract['trade_log_id'],
-                                status='error',
-                                message=log_message
-                            )
+                            if trade_log_id:
+                                update_trade(
+                                    trade_id=trade_log_id,
+                                    status='error',
+                                    message=log_message
+                                )
                             await self._log(f"❌ {log_message}")
                         continue
 
@@ -297,13 +308,14 @@ class TradingBot:
                         pnl = final_payout - buy_price
                         status = 'win' if pnl > 0 else ('loss' if pnl < 0 else 'draw')
                         
-                        update_trade(
-                            trade_id=contract['trade_log_id'],
-                            exit_price=final_payout,
-                            pnl=pnl,
-                            status=status,
-                            message=f"Contract {contract_id} for {symbol} settled. Final Payout: {final_payout:.2f}, PnL: {pnl:.2f}"
-                        )
+                        if trade_log_id:
+                            update_trade(
+                                trade_id=trade_log_id,
+                                exit_price=final_payout,
+                                pnl=pnl,
+                                status=status,
+                                message=f"Contract {contract_id} for {symbol} settled. Final Payout: {final_payout:.2f}, PnL: {pnl:.2f}"
+                            )
                         await self._log(f"✅ Contract {contract_id} for {symbol} settled. PnL: {pnl:.2f}, Status: {status.upper()}")
                         # Update balance if it was a successful sell (is_sold is true)
                         if contract_info.get('is_sold'):
@@ -325,12 +337,13 @@ class TradingBot:
                     current_pnl = current_price - buy_price
                     
                     # Update the trade log entry with current PnL
-                    update_trade(
-                        trade_id=contract['trade_log_id'],
-                        current_pnl=current_pnl,
-                        status='Open', # Ensure status remains Open
-                        message=f"Contract {contract_id} for {symbol} is open. Current PnL: {current_pnl:.2f}"
-                    )
+                    if trade_log_id:
+                        update_trade(
+                            trade_id=trade_log_id,
+                            current_pnl=current_pnl,
+                            status='Open', # Ensure status remains Open
+                            message=f"Contract {contract_id} for {symbol} is open. Current PnL: {current_pnl:.2f}"
+                        )
 
                     updated_open_contracts.append(contract)
 
@@ -342,13 +355,14 @@ class TradingBot:
                             if sell_response:
                                 sell_price = sell_response['sell']['sold_for']
                                 pnl = sell_price - contract.get('buy_price', 0)
-                                update_trade(
-                                    trade_id=contract['trade_log_id'],
-                                    exit_price=sell_price,
-                                    pnl=pnl,
-                                    status='loss',
-                                    message=log_message
-                                )
+                                if trade_log_id:
+                                    update_trade(
+                                        trade_id=trade_log_id,
+                                        exit_price=sell_price,
+                                        pnl=pnl,
+                                        status='loss',
+                                        message=log_message
+                                    )
                                 await self.update_balance_on_close(sell_response)
                             else:
                                 # If sell failed, check if it was due to resale not offered
@@ -369,13 +383,14 @@ class TradingBot:
                             if sell_response:
                                 sell_price = sell_response['sell']['sold_for']
                                 pnl = sell_price - contract.get('buy_price', 0)
-                                update_trade(
-                                    trade_id=contract['trade_log_id'],
-                                    exit_price=sell_price,
-                                    pnl=pnl,
-                                    status='win',
-                                    message=log_message
-                                )
+                                if trade_log_id:
+                                    update_trade(
+                                        trade_id=trade_log_id,
+                                        exit_price=sell_price,
+                                        pnl=pnl,
+                                        status='win',
+                                        message=log_message
+                                    )
                                 await self.update_balance_on_close(sell_response)
                             else:
                                 # If sell failed, check if it was due to resale not offered
@@ -409,13 +424,14 @@ class TradingBot:
                                 if sell_response:
                                     sell_price = sell_response['sell']['sold_for']
                                     pnl = sell_price - contract.get('buy_price', 0)
-                                    update_trade(
-                                        trade_id=contract['trade_log_id'],
-                                        exit_price=sell_price,
-                                        pnl=pnl,
-                                        status='win' if pnl > 0 else 'loss',
-                                        message=log_message
-                                    )
+                                    if trade_log_id:
+                                        update_trade(
+                                            trade_id=trade_log_id,
+                                            exit_price=sell_price,
+                                            pnl=pnl,
+                                            status='win' if pnl > 0 else 'loss',
+                                            message=log_message
+                                        )
                                     await self.update_balance_on_close(sell_response)
                                 else:
                                     if "Resale of this contract is not offered" in log_message:
@@ -435,13 +451,14 @@ class TradingBot:
                                 if sell_response:
                                     sell_price = sell_response['sell']['sold_for']
                                     pnl = sell_price - contract.get('buy_price', 0)
-                                    update_trade(
-                                        trade_id=contract['trade_log_id'],
-                                        exit_price=sell_price,
-                                        pnl=pnl,
-                                        status='closed', # Determine win/loss based on pnl
-                                        message=log_message
-                                    )
+                                    if trade_log_id:
+                                        update_trade(
+                                            trade_id=trade_log_id,
+                                            exit_price=sell_price,
+                                            pnl=pnl,
+                                            status='closed', # Determine win/loss based on pnl
+                                            message=log_message
+                                        )
                                 else:
                                     if "Resale of this contract is not offered" in log_message:
                                         contract['is_resale_offered'] = False
@@ -457,85 +474,90 @@ class TradingBot:
                         log_message = f"RSI overbought for {symbol}. Initiating early exit for contract {contract_id}."
                         await self._log(f"⚠️ {log_message}")
                         contract_details_response = await self.api.send({'proposal_open_contract': 1, 'contract_id': contract_id})
-                        if contract_details_response.get('error'):
-                            log_message = f"Error getting contract details for resale check for {contract_id}: {contract_details_response['error']['message']}"
-                            update_trade(
-                                trade_id=contract['trade_log_id'],
-                                status='error',
-                                message=log_message
-                            )
-                            await self._log(f"❌ {log_message}")
-                        else:
-                            contract_info = contract_details_response['proposal_open_contract']
-                            if contract_info.get('is_sell_available') and contract.get('is_resale_offered', True):
-                                sell_response = await sell_contract(self.api, contract_id, self._log)
-                                if sell_response:
-                                    sell_price = sell_response['sell']['sold_for']
-                                    pnl = sell_price - contract.get('buy_price', 0)
-                                    update_trade(
-                                        trade_id=contract['trade_log_id'],
-                                        exit_price=sell_price,
-                                        pnl=pnl,
-                                        status='win' if pnl > 0 else 'loss',
-                                        message=log_message
-                                    )
-                                    await self.update_balance_on_close(sell_response)
-                                else:
-                                    if "Resale of this contract is not offered" in log_message:
-                                        contract['is_resale_offered'] = False
-                                        await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
-                            else:
-                                await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
-                                update_trade(
-                                    trade_id=contract['trade_log_id'],
-                                    message=f"Resale not available for contract {contract_id}. Continuing to monitor."
-                                )
-                                contract['is_resale_offered'] = False
-                    elif contract_type == 'PUT' and latest_rsi < 30:
+                                                    if contract_details_response.get('error'):
+                                                        log_message = f"Error getting contract details for resale check for {contract_id}: {contract_details_response['error']['message']}"
+                                                        if trade_log_id:
+                                                            update_trade(
+                                                                trade_id=trade_log_id,
+                                                                status='error',
+                                                                message=log_message
+                                                            )
+                                                        await self._log(f"❌ {log_message}")
+                                                    else:
+                                                        contract_info = contract_details_response['proposal_open_contract']
+                                                        if contract_info.get('is_sell_available') and contract.get('is_resale_offered', True):
+                                                            sell_response = await sell_contract(self.api, contract_id, self._log)
+                                                            if sell_response:
+                                                                sell_price = sell_response['sell']['sold_for']
+                                                                pnl = sell_price - contract.get('buy_price', 0)
+                                                                if trade_log_id:
+                                                                    update_trade(
+                                                                        trade_id=trade_log_id,
+                                                                        exit_price=sell_price,
+                                                                        pnl=pnl,
+                                                                        status='win' if pnl > 0 else 'loss',
+                                                                        message=log_message
+                                                                    )
+                                                                await self.update_balance_on_close(sell_response)
+                                                            else:
+                                                                if "Resale of this contract is not offered" in log_message:
+                                                                    contract['is_resale_offered'] = False
+                                                                    await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
+                                                        else:
+                                                            await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
+                                                            if trade_log_id:
+                                                                update_trade(
+                                                                    trade_id=trade_log_id,
+                                                                    message=f"Resale not available for contract {contract_id}. Continuing to monitor."
+                                                                )
+                                                            contract['is_resale_offered'] = False                    elif contract_type == 'PUT' and latest_rsi < 30:
                         log_message = f"RSI oversold for {symbol}. Initiating early exit for contract {contract_id}."
                         await self._log(f"⚠️ {log_message}")
                         contract_details_response = await self.api.send({'proposal_open_contract': 1, 'contract_id': contract_id})
-                        if contract_details_response.get('error'):
-                            log_message = f"Error getting contract details for resale check for {contract_id}: {contract_details_response['error']['message']}"
-                            update_trade(
-                                trade_id=contract['trade_log_id'],
-                                status='error',
-                                message=log_message
-                            )
-                            await self._log(f"❌ {log_message}")
-                        else:
-                            contract_info = contract_details_response['proposal_open_contract']
-                            if contract_info.get('is_sell_available') and contract.get('is_resale_offered', True):
-                                sell_response = await sell_contract(self.api, contract_id, self._log)
-                                if sell_response:
-                                    sell_price = sell_response['sell']['sold_for']
-                                    pnl = sell_price - contract.get('buy_price', 0)
-                                    update_trade(
-                                        trade_id=contract['trade_log_id'],
-                                        exit_price=sell_price,
-                                        pnl=pnl,
-                                        status='win' if pnl > 0 else 'loss',
-                                        message=log_message
-                                    )
-                                    await self.update_balance_on_close(sell_response)
-                                else:
-                                    if "Resale of this contract is not offered" in log_message:
-                                        contract['is_resale_offered'] = False
-                                        await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
-                            else:
-                                await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
-                                update_trade(
-                                    trade_id=contract['trade_log_id'],
-                                    message=f"Resale not available for contract {contract_id}. Continuing to monitor."
-                                )
-                                contract['is_resale_offered'] = False
-                except Exception as e:
+                                                    if contract_details_response.get('error'):
+                                                        log_message = f"Error getting contract details for resale check for {contract_id}: {contract_details_response['error']['message']}"
+                                                        if trade_log_id:
+                                                            update_trade(
+                                                                trade_id=trade_log_id,
+                                                                status='error',
+                                                                message=log_message
+                                                            )
+                                                        await self._log(f"❌ {log_message}")
+                                                    else:
+                                                        contract_info = contract_details_response['proposal_open_contract']
+                                                        if contract_info.get('is_sell_available') and contract.get('is_resale_offered', True):
+                                                            sell_response = await sell_contract(self.api, contract_id, self._log)
+                                                            if sell_response:
+                                                                sell_price = sell_response['sell']['sold_for']
+                                                                pnl = sell_price - contract.get('buy_price', 0)
+                                                                if trade_log_id:
+                                                                    update_trade(
+                                                                        trade_id=trade_log_id,
+                                                                        exit_price=sell_price,
+                                                                        pnl=pnl,
+                                                                        status='win' if pnl > 0 else 'loss',
+                                                                        message=log_message
+                                                                    )
+                                                                await self.update_balance_on_close(sell_response)
+                                                            else:
+                                                                if "Resale of this contract is not offered" in log_message:
+                                                                    contract['is_resale_offered'] = False
+                                                                    await self._log(f"⚠️ Contract {contract_id} for {symbol} is not resaleable. Will continue to monitor until expiry.")
+                                                        else:
+                                                            await self._log(f"⚠️ Resale not available for contract {contract_id}. Continuing to monitor.")
+                                                            if trade_log_id:
+                                                                update_trade(
+                                                                    trade_id=trade_log_id,
+                                                                    message=f"Resale not available for contract {contract_id}. Continuing to monitor."
+                                                                )
+                                                            contract['is_resale_offered'] = False                except Exception as e:
                     log_message = f"Unhandled exception processing contract {contract_id}: {e}"
-                    update_trade(
-                        trade_id=contract['trade_log_id'],
-                        status='error',
-                        message=log_message
-                    )
+                    if trade_log_id:
+                        update_trade(
+                            trade_id=trade_log_id,
+                            status='error',
+                            message=log_message
+                        )
                     await self._log(f"❌ {log_message}")
             
             self.open_contracts[:] = updated_open_contracts

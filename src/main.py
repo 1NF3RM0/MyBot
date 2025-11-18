@@ -194,6 +194,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str, db: Session = Dep
 
 @app.get("/bot/metrics")
 async def get_metrics(current_user: schemas.User = Depends(auth.get_current_active_user), db: Session = Depends(database.get_db)):
+    user_id = current_user.id
     trades = db.query(database.TradeLog).filter(database.TradeLog.user_id == current_user.id).all()
     settings = db.query(database.UserSettings).filter(database.UserSettings.user_id == current_user.id).first()
     

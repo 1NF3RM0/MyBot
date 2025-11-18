@@ -82,6 +82,38 @@ Open your web browser and navigate to the frontend URL (e.g., `http://localhost:
 -   **Real-Time Communication:** [WebSockets](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API) are used to stream live logs and status updates from the backend to the frontend.
 -   **Database:** [SQLite](https://www.sqlite.org/index.html) is used for logging all trade events and strategy performance data.
 
+## ⚠️ Troubleshooting and Recent Fixes
+
+### Database Schema Mismatch (`no such column: trade_log.current_pnl`)
+
+**Problem:** After updating the bot's code, you might encounter an error like `sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such column: trade_log.current_pnl`. This happens when the database schema (the structure of your `trading_app.db` file) is out of sync with the application's code (specifically, the `TradeLog` model in `src/database.py`).
+
+**Solution:** To resolve this, you need to update your database schema. The simplest way to do this (especially during development) is to:
+
+1.  **Stop the bot and the FastAPI server.**
+2.  **Delete the existing `trading_app.db` file.** You can do this by running:
+    ```bash
+    rm trading_app.db
+    ```
+    **WARNING: This will erase all your historical trade data.** If you have important data, please back it up first.
+3.  **Restart the FastAPI server.** This will cause the application to recreate the database with the correct, updated schema.
+
+### Contract Monitoring Warnings
+
+After recent updates, you might observe the following warnings during bot operation:
+
+1.  **`⚠ Contract XXXXX for YYY has no 'trade_log_id'. Skipping local database updates for this contract, but continuing to monitor its status on Deriv.`**
+    *   **Explanation:** This warning is expected. It means the bot found contracts on your Deriv account that it didn't initiate itself (e.g., manually opened trades, or trades opened by the bot before a restart that cleared its internal memory). Since these contracts don't have a corresponding entry in the bot's local database, the bot cannot update their P/L or status in your local trade log. It will still monitor them on Deriv and remove them from its internal list when they close.
+    *   **Impact:** These specific contracts won't appear in your local trade history or contribute to the web app's metrics.
+
+2.  **`⚠ Resale not available for contract XXXXX. Continuing to monitor.`**
+    *   **Explanation:** This is also expected behavior. The Deriv API sometimes indicates that certain contracts cannot be sold before their natural expiry due to market conditions or contract type. The bot is correctly identifying these and will not attempt to sell them early, even if stop-loss or take-profit conditions are met. It will simply wait for the contract to expire naturally.
+    *   **Impact:** The bot won't perform early exits for these contracts.
+
+3.  **`⚠ RSI not available for contract XXXXX. Skipping early exit checks based on RSI.`**
+    *   **Explanation:** This warning suggests that for some contracts, the bot was unable to calculate the Relative Strength Index (RSI). This could be due to insufficient historical data for that specific symbol, or a temporary data fetching issue.
+    *   **Impact:** The bot will not use RSI-based early exit strategies for these particular contracts.
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to open an issue or submit a pull request. For major changes, please open an issue first to discuss what you would like to change.
